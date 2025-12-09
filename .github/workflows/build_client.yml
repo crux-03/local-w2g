@@ -1,0 +1,91 @@
+# .github/workflows/tauri-build.yml
+name: Build Tauri App
+
+on:
+  push:
+    tags:
+      - "v*.*.*"           # Trigger only on version tags (recommended)
+    paths:
+      - "client/**"        # Only run when something in client/ changes
+      - ".github/workflows/tauri-build.yml"
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  build-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      # Checkout only the client folder + workflow file (shallow + sparse checkout for speed)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            client
+            .github/workflows/tauri-build.yml
+
+      # Install Node.js (for Vite + Svelte)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./client
+        run: npm ci
+
+      # Install Rust toolchain (Tauri uses rustup under the hood)
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # Install Tauri dependencies per OS
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          brew install libiconv
+
+      # Windows needs nothing extra usually
+
+      # Build the Tauri app
+      - name: Build Tauri release
+        working-directory: ./client
+        run: npm run tauri build
+        # This runs `tauri build --release`
+        env:
+          # Optional: if you sign on macOS/Windows
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      # Upload artifacts
+      - name: Upload Tauri artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: |
+            client/src-tauri/target/release/bundle/**/*
+          if-no-files-found: error
+
+      # Optional: Create GitHub Release + attach installers (only once)
+      - name: Publish Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            client/src-tauri/target/release/bundle/**/*
+          generate_release_notes: true
