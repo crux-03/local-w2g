@@ -31,11 +31,6 @@ jobs:
             client
             .github/workflows/tauri-release.yml
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
@@ -71,18 +66,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
 
-      - name: Install npm dependencies (tauri CLI only)
-        working-directory: ./client
-        run: npm ci --ignore-scripts
+      - name: Install Tauri CLI (Cargo)
+        run: cargo install tauri-cli --version "^2.0.0" --locked
 
-      - name: Build Tauri release
+      - name: Build Tauri release (Deno)
         working-directory: ./client
-        run: npm run tauri build
+        run: deno task tauri build
         
       - name: Upload Tauri bundles
         uses: actions/upload-artifact@v4
