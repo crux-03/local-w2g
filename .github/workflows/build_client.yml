@@ -42,7 +42,7 @@ jobs:
           path: |
             ~/.cache/deno
             ~/.deno
-          key: deno-${{ runner.os }}-${{ hashFiles('client/deno.lock') }}
+          key: deno-${{ runner.os }}-${{ hashFiles('client/deno.lock', 'client/package.json') }}
           restore-keys: |
             deno-${{ runner.os }}-
 
@@ -73,6 +73,10 @@ jobs:
 
       - name: Install Tauri CLI (Cargo)
         run: cargo install tauri-cli --version "^2.0.0" --locked
+
+      - name: Install npm dependencies via Deno
+        working-directory: ./client
+        run: deno install
 
       - name: Build Tauri release
         working-directory: ./client
