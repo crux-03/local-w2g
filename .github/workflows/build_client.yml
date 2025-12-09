@@ -1,5 +1,3 @@
-# .github/workflows/tauri-release.yml
-
 name: Release Tauri App
 
 on:
@@ -9,10 +7,29 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write  # Required to create and upload releases
 
 jobs:
+  # Job 1: Create the release
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 2: Build and upload artifacts for each OS
   build-tauri:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -85,18 +102,9 @@ jobs:
         working-directory: ./client
         run: cargo tauri build
 
-      - name: Upload Tauri bundles
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-${{ matrix.os }}
-          path: client/src-tauri/target/release/bundle/**/*
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload Tauri bundles to release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            client/src-tauri/target/release/bundle/**/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          files: client/src-tauri/target/release/bundle/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
