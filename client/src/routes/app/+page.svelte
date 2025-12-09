@@ -15,11 +15,18 @@
         playlist,
         currentVideoIndex,
         downloadedVideos,
+        downloadingVideos,
+        downloadProgress,
         activityLog,
         currentUser,
         resetState,
     } from "$lib/store";
-    import type { ClientInfo, Config, ServerMessage } from "$lib/types";
+    import type {
+        ServerMessage,
+        DownloadProgress,
+        ClientInfo,
+        Config,
+    } from "$lib/types";
 
     let username = $state("");
     let videoStoragePath = $state("");
@@ -167,6 +174,17 @@
         });
         unlisteners.push(unlistenClientLog);
 
+        // Download progress updates
+        const unlistenDownloadProgress = await listen<DownloadProgress>(
+            "download-progress",
+            (event) => {
+                const progress = event.payload;
+                $downloadProgress.set(progress.video_id, progress);
+                $downloadProgress = $downloadProgress; // Trigger reactivity
+            },
+        );
+        unlisteners.push(unlistenDownloadProgress);
+
         // Play/Pause/Seek handlers
         const unlistenPlay = await listen("ws-play", async () => {
             try {
@@ -268,6 +286,11 @@
     }
 
     async function handlePlaylistClick(videoId: string, filename: string) {
+        // Prevent multiple clicks while downloading
+        if ($downloadingVideos.has(videoId)) {
+            return;
+        }
+
         try {
             // Check if video is already downloaded
             let localPath = $downloadedVideos.get(videoId);
@@ -280,17 +303,32 @@
 
                 if (localPath) {
                     // Found on disk, add to store
-                    $downloadedVideos.set(videoId, localPath);
+                    $downloadedVideos = $downloadedVideos.set(
+                        videoId,
+                        localPath,
+                    );
                 } else {
-                    // Need to download first
+                    // Need to download first - add to downloading set
+                    $downloadingVideos = $downloadingVideos.add(videoId);
+
                     console.log("Downloading video first...");
                     localPath = (await invoke("download_video_to_storage", {
                         videoId,
                         filename,
                     })) as string;
 
-                    // Add to downloaded videos store
-                    $downloadedVideos.set(videoId, localPath);
+                    // Remove from downloading, add to downloaded
+                    $downloadingVideos.delete(videoId);
+                    $downloadingVideos = $downloadingVideos;
+                    $downloadedVideos = $downloadedVideos.set(
+                        videoId,
+                        localPath,
+                    );
+
+                    // Clear download progress
+                    $downloadProgress.delete(videoId);
+                    $downloadProgress = $downloadProgress;
+
                     console.log("Download complete, ready status set");
                 }
             }
@@ -299,6 +337,12 @@
             await invoke("start_mpv", { videoPath: localPath });
         } catch (error) {
             console.error("Failed to start video:", error);
+            // Remove from downloading on error
+            $downloadingVideos.delete(videoId);
+            $downloadingVideos = $downloadingVideos;
+            // Clear download progress
+            $downloadProgress.delete(videoId);
+            $downloadProgress = $downloadProgress;
         }
     }
 
@@ -372,8 +416,11 @@
     async function startSession() {
         if (!$clientInfo.is_owner) return;
 
-        // Send play command to start everyone
         try {
+            // Start host's own MPV first
+            await invoke("mpv_play");
+
+            // Then send play command to start everyone else
             await invoke("send_message", {
                 messageType: "play",
                 data: null,
@@ -387,6 +434,10 @@
         if (!$clientInfo.is_owner) return;
 
         try {
+            // Pause host's own MPV first
+            await invoke("mpv_pause");
+
+            // Then send pause command to everyone else
             await invoke("send_message", {
                 messageType: "pause",
                 data: null,
@@ -400,6 +451,10 @@
         if (!$clientInfo.is_owner) return;
 
         try {
+            // Seek host's own MPV first
+            await invoke("mpv_seek", { position: 0 });
+
+            // Then send seek command to everyone else
             await invoke("send_message", {
                 messageType: "seek",
                 data: 0,
@@ -480,12 +535,18 @@
             <h3>Connected Users</h3>
             <div class="user-list-content">
                 {#each $users as user, index (user.id)}
+                    {@const isSelf = user.id === $clientInfo.client_id}
+                    {@const activeDownload = isSelf
+                        ? Array.from($downloadProgress.values()).find(
+                              (p) => p.progress > 0 && p.progress < 100,
+                          )
+                        : null}
                     <UserItem
                         userId={user.id}
                         username={getUserDisplayName(user, index)}
                         status={user.status}
                         isOwner={user.is_owner}
-                        isSelf={user.id === $clientInfo.client_id}
+                        {isSelf}
                         on:contextmenu={showContextMenu}
                     />
                 {/each}
@@ -572,7 +633,8 @@
                         filename={video.filename}
                         size={video.size_display}
                         isCurrent={index === $currentVideoIndex}
-                        showDownload={!$downloadedVideos.has(video.id)}
+                        isDownloaded={$downloadedVideos.has(video.id)}
+                        isDownloading={$downloadingVideos.has(video.id)}
                         on:play={() =>
                             handlePlaylistClick(video.id, video.filename)}
                     />
@@ -688,13 +750,13 @@
         border-color: var(--accent-orange);
     }
 
-    .status-header.good {
+    /*.status-header.good {
         border-color: var(--accent-green);
     }
 
     .status-header.bad {
         border-color: var(--accent-red);
-    }
+    }*/
 
     .status-content {
         display: flex;

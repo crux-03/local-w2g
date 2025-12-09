@@ -25,6 +25,16 @@ export interface Video {
   uploader_id: string;
 }
 
+export interface DownloadProgress {
+  video_id: string;
+  filename: string;
+  downloaded: number;
+  total: number;
+  progress: number;
+  speed: number;
+  speed_display: string;
+}
+
 export interface LogEntry {
   timestamp: string;
   user_id: string;
@@ -60,4 +70,5 @@ export type ServerMessage =
   | { type: "video_uploaded"; video: Video }
   | { type: "all_ready" }
   | { type: "ownership_transferred"; new_owner_id: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "pong" };

@@ -6,6 +6,8 @@
     export let status: 'ready' | 'waiting' | 'error' = 'waiting';
     export let isOwner: boolean = false;
     export let isSelf: boolean = false;
+    export let downloadProgress: number = 0; // 0-100, 0 means not downloading
+    export let downloadSpeed: string = '';
     
     const dispatch = createEventDispatcher();
     
@@ -20,32 +22,50 @@
 <div 
     class="user-item" 
     class:self={isSelf}
+    class:downloading={downloadProgress > 0 && downloadProgress < 100}
     role="button"
     tabindex={isSelf ? -1 : 0}
     oncontextmenu={handleContextMenu}
 >
-    <span class="status-dot {status}"></span>
-    <span class="username">
-        {#if isSelf}
-            {username} (me)
-        {:else}
-            {username}
+    <div class="user-info">
+        <div class="user-header">
+            <span class="status-dot {status}"></span>
+            <span class="username">
+                {#if isSelf}
+                    {username} (me)
+                {:else}
+                    {username}
+                {/if}
+            </span>
+            {#if isOwner}
+                <span class="owner-badge">Owner</span>
+            {/if}
+        </div>
+        
+        {#if downloadProgress > 0 && downloadProgress < 100}
+            <div class="download-status">
+                <div class="progress-text">
+                    <span class="percentage">{downloadProgress}%</span>
+                    <span class="speed">{downloadSpeed}</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: {downloadProgress}%"></div>
+                </div>
+            </div>
         {/if}
-    </span>
-    {#if isOwner}
-        <span class="owner-badge">Owner</span>
-    {/if}
+    </div>
 </div>
 
 <style>
     .user-item {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 0.5rem;
-        padding: 0.5rem;
+        padding: 0.625rem 0.5rem;
         border-radius: 4px;
         margin-bottom: 0.25rem;
         cursor: pointer;
+        transition: background-color 0.2s;
     }
 
     .user-item:hover {
@@ -57,11 +77,31 @@
         cursor: default;
     }
 
+    .user-item.downloading {
+        background-color: rgba(33, 150, 243, 0.1);
+    }
+
+    .user-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .user-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
     .status-dot {
         width: 10px;
         height: 10px;
         border-radius: 50%;
         flex-shrink: 0;
+        margin-top: 0.125rem;
     }
 
     .status-dot.ready {
@@ -79,6 +119,10 @@
     .username {
         flex: 1;
         font-size: 0.875rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .owner-badge {
@@ -90,5 +134,48 @@
         text-transform: uppercase;
         font-weight: 600;
         flex-shrink: 0;
+    }
+
+    .download-status {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        width: 100%;
+        padding-left: 20px; /* Align with username */
+    }
+
+    .progress-text {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+    }
+
+    .percentage {
+        font-weight: 600;
+        color: var(--accent-blue);
+    }
+
+    .speed {
+        color: var(--text-secondary);
+        font-size: 0.65rem;
+    }
+
+    .progress-bar-container {
+        width: 100%;
+        height: 4px;
+        background-color: var(--bg-secondary);
+        border-radius: 2px;
+        overflow: hidden;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, 
+            var(--accent-blue) 0%, 
+            #64b5f6 100%);
+        transition: width 0.3s ease;
+        border-radius: 2px;
     }
 </style>

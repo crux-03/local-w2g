@@ -434,6 +434,16 @@ async fn handle_request_state(user_id: Uuid, state: Arc<AppState>) -> anyhow::Re
     Ok(())
 }
 
+async fn handle_ping(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
+    // Respond with Pong to keep connection alive
+    tracing::trace!("Received ping from client {}, sending pong", user_id);
+    let response = ServerMessage::Pong;
+    let bytes = serde_json::to_string(&response)?.into();
+    state.send_to_client(&user_id, Message::Text(bytes)).await;
+    
+    Ok(())
+}
+
 pub async fn handle_command(message: &str, user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     let message: ClientMessage = serde_json::from_str(message)?;
 
@@ -456,6 +466,9 @@ pub async fn handle_command(message: &str, user_id: Uuid, state: Arc<AppState>) 
         },
         ClientMessage::RequestState => {
             handle_request_state(user_id, state).await
+        },
+        ClientMessage::Ping => {
+            handle_ping(user_id, state).await
         },
     }
 }

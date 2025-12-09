@@ -16,6 +16,21 @@ export const currentVideoIndex = writable<number | null>(null);
 // Downloaded videos - maps video ID to local file path
 export const downloadedVideos = writable<Map<string, string>>(new Map());
 
+// Currently downloading videos - set of video IDs
+export const downloadingVideos = writable<Set<string>>(new Set());
+
+// Download progress - maps video ID to progress info
+export interface DownloadProgress {
+  video_id: string;
+  filename: string;
+  downloaded: number;
+  total: number;
+  progress: number; // 0-100
+  speed: number; // bytes per second
+  speed_display: string;
+}
+export const downloadProgress = writable<Map<string, DownloadProgress>>(new Map());
+
 // Activity log
 export const activityLog = writable<LogEntry[]>([]);
 
@@ -99,5 +114,7 @@ export function resetState() {
   playlist.set([]);
   currentVideoIndex.set(null);
   downloadedVideos.set(new Map());
+  downloadingVideos.set(new Set());
+  downloadProgress.set(new Map());
   activityLog.set([]);
 }

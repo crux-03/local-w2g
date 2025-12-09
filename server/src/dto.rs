@@ -24,6 +24,7 @@ pub enum ClientMessage {
         index: usize 
     },
     RequestState,
+    Ping,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +67,7 @@ pub enum ServerMessage {
         new_owner_id: Uuid,
     },
     Error { message: String },
+    Pong,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

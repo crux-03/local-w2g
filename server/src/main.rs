@@ -10,8 +10,8 @@ use axum::{
 };
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
-use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::{sync::Arc, time::Duration};
+use tokio::{sync::mpsc, time};
 use futures_util::stream::StreamExt;
 use futures_util::SinkExt;
 use tokio::fs::File;
@@ -34,24 +34,23 @@ async fn main() {
         .with(fmt::layer())
         .with(
             EnvFilter::new("DEBUG")
-                .add_directive("sqlx=warn".parse().unwrap()),
         )
         .init();
     // Load config (will auto-create/fix config.yaml)
     let config = Config::load().expect("Failed to load config");
-    println!("Server starting on {}:{}", config.host, config.port);
+    tracing::info!("Server starting on {}:{}", config.host, config.port);
 
     // Initialize shared state
     let app_state = Arc::new(AppState::new(config.clone()));
 
-    let max_bytes = config.max_file_size_mb as u64 * 1024 * 1024;
+    let max_upload_mb = config.max_file_size_mb * 1024 * 1024;
 
     // Build router
     let app = Router::new()
         .route("/ws", get(websocket_handler))
         .route("/upload", post(upload_handler))
-        .layer(DefaultBodyLimit::max(max_bytes as usize))
         .route("/video/{video_id}", get(download_handler))
+        .layer(DefaultBodyLimit::max(max_upload_mb as usize))
         .route("/health", get(health_handler))
         .with_state(app_state);
 
@@ -61,8 +60,9 @@ async fn main() {
         .await
         .expect("Failed to bind to address");
 
-    println!("Server listening on {}", addr);
-    println!("Video storage directory: {}", config.video_storage_dir);
+    tracing::info!("Server listening on {}", addr);
+    tracing::info!("Video storage directory: {}", config.video_storage_dir);
+    tracing::info!("Max file upload: {}MB", config.max_file_size_mb);
     axum::serve(listener, app)
         .await
         .expect("Server failed to start");
@@ -91,14 +91,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             if socket_tx.send(msg).await.is_err() {
-                break; // Client disconnected
+                tracing::error!("Failed to send message to client, disconnected");
+                break;
             }
         }
     });
 
     // Send initial message
     if let Err(e) = ws::send_initial_message(client_id, Arc::clone(&state)).await {
-        eprintln!("Failed to send initial message: {}", e);
+        tracing::error!("Failed to send initial message: {}", e);
     }
 
     // Handle incoming messages
@@ -106,7 +107,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         match msg {
             Ok(Message::Text(text)) => {
                 if let Err(e) = ws::handle_command(&text, client_id, Arc::clone(&state)).await {
-                    eprintln!("Error handling command: {}", e);
+                    tracing::error!("Error handling command: {}", e);
                     let error_msg = ServerMessage::Error {
                         message: format!("Command error: {}", e)
                     };
@@ -117,7 +118,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             },
             Ok(Message::Close(_)) => break,
             Err(e) => {
-                eprintln!("WebSocket error: {}", e);
+                tracing::error!("WebSocket error: {}", e);
                 break;
             },
             _ => {}
@@ -142,6 +143,7 @@ async fn upload_handler(
     Query(query): Query<UploadQuery>,
     mut multipart: Multipart,
 ) -> Result<Response, (StatusCode, String)> {
+    tracing::info!("Uploading file...");
     // Parse client_id
     let client_id = if let Some(id_str) = query.client_id {
         Uuid::parse_str(&id_str)
@@ -159,7 +161,9 @@ async fn upload_handler(
     let mut file_size: u64 = 0;
     let video_id = Uuid::new_v4();
 
-    while let Some(field) = multipart.next_field().await
+    let mut interval = time::interval(Duration::from_millis(2000));
+
+    while let Some(mut field) = multipart.next_field().await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {}", e)))?
     {
         let name = field.name().unwrap_or("").to_string();
@@ -201,24 +205,43 @@ async fn upload_handler(
             let mut file = File::create(&file_path).await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create file: {}", e)))?;
 
-            let data = field.bytes().await
-                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read file data: {}", e)))?;
+            // Replace this single line:
+            // let data = field.bytes().await...
 
-            file_size = data.len() as u64;
+            // With chunked reading:
+            let mut bytes_received = 0u64;
 
-            // Check file size limit
-            let max_size_bytes = state.config.max_file_size_mb * 1024 * 1024;
-            if file_size > max_size_bytes {
-                // Delete the file we just created
-                let _ = tokio::fs::remove_file(&file_path).await;
-                return Err((
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    format!("File too large. Max size: {} MB", state.config.max_file_size_mb)
-                ));
+            while let Some(chunk) = field.chunk().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read chunk: {}", e)))?
+            {
+                bytes_received += chunk.len() as u64;
+
+                // Check size limit as we go
+                let max_size_bytes = state.config.max_file_size_mb * 1024 * 1024;
+                if bytes_received > max_size_bytes {
+                    let _ = tokio::fs::remove_file(&file_path).await;
+                    return Err((
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        format!("File too large. Max size: {} MB", state.config.max_file_size_mb)
+                    ));
+                }
+
+                // Write chunk to disk
+                file.write_all(&chunk).await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to write chunk: {}", e)))?;
+
+                // Log progress every 2 seconds
+                if interval.poll_tick(&mut std::task::Context::from_waker(futures_util::task::noop_waker_ref())).is_ready() {
+                    let mb_received = bytes_received as f64 / (1024.0 * 1024.0);
+                    tracing::debug!(
+                        filename = %field_filename,
+                        bytes_received_mb = mb_received,
+                        "Upload progress"
+                    );
+                }
             }
 
-            file.write_all(&data).await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to write file: {}", e)))?;
+            file_size = bytes_received;
 
             file.flush().await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to flush file: {}", e)))?;
