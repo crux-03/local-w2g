@@ -57,14 +57,14 @@ impl Config {
             // Parse with defaults for missing fields
             let config: Config = serde_yaml::from_str(&contents)
                 .unwrap_or_else(|e| {
-                    eprintln!("Warning: Config parse error ({}), using defaults", e);
+                    tracing::error!("Warning: Config parse error ({}), using defaults", e);
                     Config::default()
                 });
             
             config
         } else {
             // Create new config with defaults
-            println!("Config file not found, creating default config.yaml");
+            tracing::info!("Config file not found, creating default config.yaml");
             Config::default()
         };
 

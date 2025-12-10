@@ -6,12 +6,12 @@ use chrono::Utc;
 use futures_util::StreamExt;
 use mpv::MpvManager;
 use reqwest::Body;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tokio_util::io::ReaderStream;
-use types::{ClientMessage, CommandResult, LogEntry, LogSource, Video};
+use types::{ClientMessage, CommandResult, LogEntry, LogSource};
 use websocket::WebSocketClient;
 
 // Helper function to emit client-side logs
@@ -32,6 +32,8 @@ pub struct AppState {
     config: Arc<RwLock<ClientConfig>>,
     client_id: Arc<RwLock<Option<String>>>,
     is_owner: Arc<RwLock<bool>>,
+    password: Arc<RwLock<String>>,
+    config_path: PathBuf,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -42,18 +44,62 @@ struct ClientConfig {
 }
 
 impl AppState {
-    fn new() -> Self {
-        Self {
-            ws_client: Arc::new(RwLock::new(WebSocketClient::new())),
-            mpv_manager: Arc::new(RwLock::new(MpvManager::new())),
-            config: Arc::new(RwLock::new(ClientConfig {
+    fn new(app_handle: &AppHandle) -> Self {
+        // Get the app config directory
+        let config_dir = app_handle
+            .path()
+            .app_config_dir()
+            .expect("Failed to get config directory");
+        
+        // Create the config directory if it doesn't exist
+        std::fs::create_dir_all(&config_dir).ok();
+        
+        let config_path = config_dir.join("config.json");
+        
+        // Load config from file if it exists
+        let config = if config_path.exists() {
+            match std::fs::read_to_string(&config_path) {
+                Ok(content) => {
+                    serde_json::from_str(&content).unwrap_or_else(|_| ClientConfig {
+                        server_url: None,
+                        video_storage_path: None,
+                        mpv_binary_path: None,
+                    })
+                }
+                Err(_) => ClientConfig {
+                    server_url: None,
+                    video_storage_path: None,
+                    mpv_binary_path: None,
+                },
+            }
+        } else {
+            ClientConfig {
                 server_url: None,
                 video_storage_path: None,
                 mpv_binary_path: None,
-            })),
+            }
+        };
+
+        Self {
+            ws_client: Arc::new(RwLock::new(WebSocketClient::new())),
+            mpv_manager: Arc::new(RwLock::new(MpvManager::new())),
+            config: Arc::new(RwLock::new(config)),
             client_id: Arc::new(RwLock::new(None)),
             is_owner: Arc::new(RwLock::new(false)),
+            password: Arc::new(RwLock::new(String::new())),
+            config_path,
         }
+    }
+    
+    async fn save_config(&self) -> Result<(), String> {
+        let config = self.config.read().await;
+        let json = serde_json::to_string_pretty(&*config)
+            .map_err(|e| format!("Failed to serialize config: {}", e))?;
+        
+        std::fs::write(&self.config_path, json)
+            .map_err(|e| format!("Failed to write config: {}", e))?;
+        
+        Ok(())
     }
 }
 
@@ -79,6 +125,9 @@ async fn set_config(
     if let Some(path) = mpv_path {
         config.mpv_binary_path = Some(path);
     }
+    
+    drop(config); // Release the lock before saving
+    state.save_config().await?;
 
     Ok(())
 }
@@ -87,6 +136,13 @@ async fn set_config(
 async fn get_config(state: State<'_, AppState>) -> CommandResult<ClientConfig> {
     let config = state.config.read().await;
     Ok(config.clone())
+}
+
+#[tauri::command]
+async fn set_password(password: String, state: State<'_, AppState>) -> CommandResult<()> {
+    let mut pw = state.password.write().await;
+    *pw = password;
+    Ok(())
 }
 
 // ============================================================================
@@ -157,6 +213,7 @@ async fn save_file(default_name: Option<String>) -> CommandResult<Option<String>
 #[tauri::command]
 async fn connect(
     server_url: String,
+    server_pw: String,
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> CommandResult<()> {
@@ -164,22 +221,26 @@ async fn connect(
 
     // Update config
     state.config.write().await.server_url = Some(server_url.clone());
+    state.save_config().await?;
 
     // Connect to WebSocket
     let mut ws_client = state.ws_client.write().await;
 
     // Pass state references for storing client_id and is_owner
-    ws_client
-        .connect(
-            &server_url,
-            app_handle.clone(),
-            state.client_id.clone(),
-            state.is_owner.clone(),
-        )
-        .await?;
+    
+    ws_client.connect(
+        &server_url,
+        app_handle.clone(),
+        state.client_id.clone(),
+        state.is_owner.clone(),
+        server_pw.clone()
+    ).await?;
 
     emit_client_log(&app_handle, "Connected successfully".to_string());
-
+    
+    let mut password = state.password.write().await;
+    *password = server_pw;
+    
     Ok(())
 }
 
@@ -266,18 +327,17 @@ async fn send_message(
             let client_id = obj
                 .get("client_id")
                 .and_then(|v| v.as_str())
-                .ok_or("Missing client_id")?
-                .to_string();
+                .map(|s| s.to_string())
+                .ok_or("Missing client_id")?;
             let permission = obj
                 .get("permission")
                 .and_then(|v| v.as_str())
-                .ok_or("Missing permission")?
-                .to_string();
+                .map(|s| s.to_string())
+                .ok_or("Missing permission")?;
             let value = obj
                 .get("value")
                 .and_then(|v| v.as_bool())
                 .ok_or("Missing value")?;
-
             ClientMessage::SetPermission {
                 client_id,
                 permission,
@@ -287,17 +347,18 @@ async fn send_message(
         "transfer_ownership" => {
             let client_id = data
                 .and_then(|d| d.as_str().map(|s| s.to_string()))
-                .ok_or("Missing or invalid client_id")?;
+                .ok_or("Missing client_id")?;
             ClientMessage::TransferOwnership { client_id }
         }
         "select_video" => {
             let index = data
                 .and_then(|d| d.as_u64())
                 .map(|i| i as usize)
-                .ok_or("Missing or invalid index for select_video")?;
+                .ok_or("Missing or invalid index")?;
             ClientMessage::SelectVideo { index }
         }
         "request_state" => ClientMessage::RequestState,
+        "ping" => ClientMessage::Ping,
         _ => return Err(format!("Unknown message type: {}", message_type)),
     };
 
@@ -316,21 +377,17 @@ async fn upload_video(
     file_path: String,
     state: State<'_, AppState>,
     app_handle: AppHandle,
-) -> CommandResult<Video> {
-    // Check if connected
+) -> CommandResult<()> {
+    emit_client_log(&app_handle, format!("Uploading video: {}", file_path));
+
     let config = state.config.read().await;
     let server_url = config
         .server_url
         .as_ref()
-        .ok_or("Not connected to server")?;
+        .ok_or("Server URL not configured")?
+        .clone();
+    drop(config);
 
-    // Check if owner
-    let is_owner = *state.is_owner.read().await;
-    if !is_owner {
-        return Err("Only the owner can upload videos".to_string());
-    }
-
-    // Get client ID
     let client_id = state
         .client_id
         .read()
@@ -339,107 +396,79 @@ async fn upload_video(
         .ok_or("Not connected")?
         .clone();
 
-    let file_name = PathBuf::from(&file_path)
+    let password = state.password.read().await.clone();
+
+    // Open file
+    let file = tokio::fs::File::open(&file_path)
+        .await
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    let metadata = file
+        .metadata()
+        .await
+        .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+    let file_size = metadata.len();
+
+    emit_client_log(
+        &app_handle,
+        format!("File size: {}", format_size(file_size)),
+    );
+
+    let filename = std::path::Path::new(&file_path)
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or("Invalid filename")?
         .to_string();
 
-    emit_client_log(
-        &app_handle,
-        format!("Uploading video (streaming): {}", file_name),
-    );
-
-    // Open file for streaming
-    let file = tokio::fs::File::open(&file_path)
-        .await
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-
-    // Get file size for optional use (but we won't set Content-Length to force chunked)
-    let file_metadata = file
-        .metadata()
-        .await
-        .map_err(|e| format!("Failed to get file metadata: {}", e))?;
-    let _file_size = file_metadata.len(); // Can use for progress if added later
-
-    // Create stream from file (defaults to 8KB chunks; adjust with ReaderStream::with_capacity if needed)
+    // Create multipart form
     let stream = ReaderStream::new(file);
+    let mime_type = mime_guess::from_path(&filename)
+        .first_or_octet_stream()
+        .as_ref()
+        .to_string();
 
-    // Wrap in reqwest Body
-    let body = Body::wrap_stream(stream);
-
-    // Create streaming part (omit stream_with_length to avoid Content-Length)
-    let part = reqwest::multipart::Part::stream(body).file_name(file_name.clone());
-
-    // Optionally set MIME type based on extension (improves server handling)
-    // let part = part.mime_str("video/mp4").map_err(|e| format!("Failed to set MIME: {}", e))?; // Adjust MIME as needed
+    let part = reqwest::multipart::Part::stream(Body::wrap_stream(stream))
+        .file_name(filename.clone())
+        .mime_str(&mime_type)
+        .map_err(|e| format!("Failed to create multipart: {}", e))?;
 
     let form = reqwest::multipart::Form::new().part("file", part);
 
-    let base_url = server_url.trim_end_matches("/").trim_end_matches("/ws");
-
-    let base_url = if !base_url.starts_with("http") {
-        format!("http://{}", base_url)
+    // Build URL with client_id query param
+    let server_url = if server_url.starts_with("http://") || server_url.starts_with("https://") {
+        server_url
     } else {
-        base_url.to_string()
+        format!("http://{}", server_url)
     };
 
-    let upload_url = format!("{}/upload?client_id={}", base_url, client_id);
+    let url = format!("{}/upload?client_id={}", server_url, client_id);
+    
+    println!("url: {url}");
 
+    emit_client_log(&app_handle, "Starting upload...".to_string());
+
+    // Send request
     let client = reqwest::Client::new();
     let response = client
-        .post(&upload_url)
+        .post(&url)
+        .header("X-Access-Key", password)
         .multipart(form)
         .send()
         .await
-        .map_err(|e| format!("Upload failed: {}", e))?;
+        .map_err(|e| format!("Upload request failed: {}", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        emit_client_log(&app_handle, format!("Upload failed: {}", error_text));
-        return Err(format!("Upload failed: {}", error_text));
+        return Err(format!("Upload failed ({}): {}", status, error_text));
     }
 
-    let upload_result: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    emit_client_log(&app_handle, "Video uploaded successfully".to_string());
 
-    // The server will broadcast VideoUploaded message, but we can also return the video info
-    let video = Video {
-        id: upload_result
-            .get("video_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        filename: upload_result
-            .get("filename")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        size_bytes: upload_result
-            .get("size")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        size_display: format_size(
-            upload_result
-                .get("size")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-        ),
-        uploaded_at: chrono::Utc::now(),
-        uploader_id: client_id,
-    };
-
-    emit_client_log(
-        &app_handle,
-        format!("Upload complete: {} ({})", file_name, video.size_display),
-    );
-
-    Ok(video)
+    Ok(())
 }
 
 #[tauri::command]
@@ -449,53 +478,50 @@ async fn get_video_url(
     state: State<'_, AppState>,
 ) -> CommandResult<String> {
     let config = state.config.read().await;
-    let server_url = config.server_url.as_ref().ok_or("Server url not set")?;
-    let base_url = server_url.trim_end_matches("/").trim_end_matches("/ws");
-
-    let base_url = if !base_url.starts_with("http") {
-        format!("http://{}", base_url)
+    let server_url = config
+        .server_url
+        .as_ref()
+        .ok_or("Server URL not configured")?;
+    
+    let server_url = if server_url.starts_with("http://") || server_url.starts_with("https://") {
+        server_url
     } else {
-        base_url.to_string()
+        &format!("http://{}", server_url)
     };
 
     let download_param = if download.unwrap_or(false) {
-        "true"
+        "?download=true"
     } else {
-        "false"
+        ""
     };
+
     Ok(format!(
-        "{}/video/{}?download={}",
-        base_url, video_id, download_param
+        "{}/video/{}{}",
+        server_url, video_id, download_param
     ))
 }
 
 #[tauri::command]
 async fn download_video(
     video_id: String,
-    save_path: String,
     state: State<'_, AppState>,
     app_handle: AppHandle,
-) -> CommandResult<()> {
+) -> CommandResult<Vec<u8>> {
     emit_client_log(&app_handle, format!("Downloading video: {}", video_id));
 
-    let video_url = get_video_url(video_id.clone(), Some(true), state.clone()).await?;
+    let video_url = get_video_url(video_id, Some(true), state.clone()).await?;
+    let password = state.password.read().await.clone();
 
     let client = reqwest::Client::new();
     let response = client
         .get(&video_url)
+        .header("X-Access-Key", password)
         .send()
         .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+        .map_err(|e| format!("Download request failed: {}", e))?;
 
     if !response.status().is_success() {
-        emit_client_log(
-            &app_handle,
-            format!("Download failed with status: {}", response.status()),
-        );
-        return Err(format!(
-            "Download failed with status: {}",
-            response.status()
-        ));
+        return Err(format!("Download failed: {}", response.status()));
     }
 
     let bytes = response
@@ -503,15 +529,9 @@ async fn download_video(
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    emit_client_log(&app_handle, format!("Saving to: {}", save_path));
+    emit_client_log(&app_handle, "Video downloaded successfully".to_string());
 
-    tokio::fs::write(&save_path, bytes)
-        .await
-        .map_err(|e| format!("Failed to save file: {}", e))?;
-
-    emit_client_log(&app_handle, "Download complete".to_string());
-
-    Ok(())
+    Ok(bytes.to_vec())
 }
 
 #[tauri::command]
@@ -521,115 +541,169 @@ async fn download_video_to_storage(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> CommandResult<String> {
-    // Get video storage path from config
+    emit_client_log(
+        &app_handle,
+        format!("Downloading video to storage: {}", filename),
+    );
+
+    // Get config
     let config = state.config.read().await;
     let storage_path = config
         .video_storage_path
         .as_ref()
-        .ok_or("Video storage path not configured")?;
+        .ok_or("Video storage path not configured")?
+        .clone();
+    let mut server_url = config
+        .server_url
+        .as_ref()
+        .ok_or("Server URL not configured")?
+        .clone();
+    drop(config);
 
-    // Create full path
-    let video_path = std::path::Path::new(storage_path).join(&filename);
+    // Ensure server URL has http:// or https:// prefix
+    if !server_url.starts_with("http://") && !server_url.starts_with("https://") {
+        server_url = format!("http://{}", server_url);
+    }
+
+    // Create storage directory if it doesn't exist
+    tokio::fs::create_dir_all(&storage_path)
+        .await
+        .map_err(|e| format!("Failed to create storage directory: {}", e))?;
+
+    let video_path = std::path::Path::new(&storage_path).join(&filename);
     let video_path_str = video_path.to_string_lossy().to_string();
 
-    // Get video URL
-    let video_url = get_video_url(video_id.clone(), Some(true), state.clone()).await?;
+    // Prepare URL
+    let url = format!("{}/video/{}", server_url, video_id);
+    let password = state.password.read().await.clone();
 
-    emit_client_log(&app_handle, format!("Downloading video: {}", filename));
+    // Spawn download task on a separate thread to avoid blocking
+    let app_handle_clone = app_handle.clone();
+    let video_id_clone = video_id.clone();
+    let filename_clone = filename.clone();
+    
+    tokio::spawn(async move {
+        // Create file
+        let mut file = match tokio::fs::File::create(&video_path).await {
+            Ok(f) => f,
+            Err(e) => {
+                emit_client_log(&app_handle_clone, format!("Failed to create file: {}", e));
+                return;
+            }
+        };
 
-    // Start download with progress tracking
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&video_url)
-        .send()
-        .await
-        .map_err(|e| format!("Download failed: {}", e))?;
-
-    if !response.status().is_success() {
-        emit_client_log(
-            &app_handle,
-            format!("Download failed with status: {}", response.status()),
-        );
-        return Err(format!(
-            "Download failed with status: {}",
-            response.status()
-        ));
-    }
-
-    // Get total size
-    let total_size = response.content_length().unwrap_or(0);
-
-    // Create file
-    let mut file = tokio::fs::File::create(&video_path)
-        .await
-        .map_err(|e| format!("Failed to create file: {}", e))?;
-
-    // Download with progress tracking
-    let mut downloaded: u64 = 0;
-    let mut stream = response.bytes_stream();
-    let mut last_update = std::time::Instant::now();
-    let mut last_downloaded = 0u64;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Failed to read chunk: {}", e))?;
-
-        file.write_all(&chunk)
+        // Start download
+        let client = reqwest::Client::new();
+        let response = match client
+            .get(&url)
+            .header("X-Access-Key", password)
+            .send()
             .await
-            .map_err(|e| format!("Failed to write chunk: {}", e))?;
+        {
+            Ok(r) => r,
+            Err(e) => {
+                emit_client_log(&app_handle_clone, format!("Download request failed: {}", e));
+                // Clean up empty file
+                let _ = tokio::fs::remove_file(&video_path).await;
+                return;
+            }
+        };
 
-        downloaded += chunk.len() as u64;
-
-        // Emit progress every 500ms
-        let now = std::time::Instant::now();
-        if now.duration_since(last_update).as_millis() >= 500 || downloaded == total_size {
-            let progress = if total_size > 0 {
-                (downloaded as f64 / total_size as f64 * 100.0) as u32
-            } else {
-                0
-            };
-
-            // Calculate speed (bytes per second)
-            let elapsed_secs = now.duration_since(last_update).as_secs_f64();
-            let bytes_since_last = downloaded - last_downloaded;
-            let speed = if elapsed_secs > 0.0 {
-                (bytes_since_last as f64 / elapsed_secs) as u64
-            } else {
-                0
-            };
-
-            // Emit progress event
-            let progress_data = serde_json::json!({
-                "video_id": video_id,
-                "filename": filename,
-                "downloaded": downloaded,
-                "total": total_size,
-                "progress": progress,
-                "speed": speed,
-                "speed_display": format_speed(speed),
-            });
-
-            let _ = app_handle.emit("download-progress", progress_data);
-
-            last_update = now;
-            last_downloaded = downloaded;
+        if !response.status().is_success() {
+            emit_client_log(
+                &app_handle_clone,
+                format!("Download failed with status: {}", response.status()),
+            );
+            // Clean up empty file
+            let _ = tokio::fs::remove_file(&video_path).await;
+            return;
         }
-    }
 
-    file.flush()
-        .await
-        .map_err(|e| format!("Failed to flush file: {}", e))?;
+        let total_size = response.content_length().unwrap_or(0);
 
-    emit_client_log(&app_handle, "Download complete".to_string());
+        let mut stream = response.bytes_stream();
+        let mut downloaded: u64 = 0;
+        let mut last_update = std::time::Instant::now();
+        let mut last_downloaded: u64 = 0;
 
-    // Automatically set ready status after download
-    emit_client_log(&app_handle, "Setting ready status".to_string());
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = match chunk_result {
+                Ok(c) => c,
+                Err(e) => {
+                    emit_client_log(&app_handle_clone, format!("Failed to read chunk: {}", e));
+                    // Clean up partial file
+                    let _ = tokio::fs::remove_file(&video_path).await;
+                    return;
+                }
+            };
 
-    let ws_client = state.ws_client.read().await;
-    ws_client
-        .send(ClientMessage::Ready { value: true })
-        .await
-        .map_err(|e| format!("Failed to set ready: {}", e))?;
+            if let Err(e) = file.write_all(&chunk).await {
+                emit_client_log(&app_handle_clone, format!("Failed to write chunk: {}", e));
+                // Clean up partial file
+                let _ = tokio::fs::remove_file(&video_path).await;
+                return;
+            }
 
+            downloaded += chunk.len() as u64;
+
+            // Update progress every 500ms
+            let now = std::time::Instant::now();
+            if now.duration_since(last_update) >= Duration::from_millis(500) {
+                let progress = if total_size > 0 {
+                    (downloaded as f64 / total_size as f64 * 100.0) as u64
+                } else {
+                    0
+                };
+
+                let elapsed_secs = now.duration_since(last_update).as_secs_f64();
+                let bytes_since_last = downloaded - last_downloaded;
+                let speed = if elapsed_secs > 0.0 {
+                    (bytes_since_last as f64 / elapsed_secs) as u64
+                } else {
+                    0
+                };
+
+                // Emit progress event
+                let progress_data = serde_json::json!({
+                    "video_id": video_id_clone,
+                    "filename": filename_clone,
+                    "downloaded": downloaded,
+                    "total": total_size,
+                    "progress": progress,
+                    "speed": speed,
+                    "speed_display": format_speed(speed),
+                });
+
+                let _ = app_handle_clone.emit("download-progress", progress_data);
+
+                last_update = now;
+                last_downloaded = downloaded;
+            }
+        }
+
+        if let Err(e) = file.flush().await {
+            emit_client_log(&app_handle_clone, format!("Failed to flush file: {}", e));
+            // Clean up incomplete file
+            let _ = tokio::fs::remove_file(&video_path).await;
+            return;
+        }
+
+        emit_client_log(&app_handle_clone, "Download complete".to_string());
+
+        // Emit final progress (100%)
+        let progress_data = serde_json::json!({
+            "video_id": video_id_clone,
+            "filename": filename_clone,
+            "downloaded": downloaded,
+            "total": total_size,
+            "progress": 100,
+            "speed": 0,
+            "speed_display": "Complete".to_string(),
+        });
+        let _ = app_handle_clone.emit("download-progress", progress_data);
+    });
+
+    // Return immediately
     Ok(video_path_str)
 }
 
@@ -775,6 +849,32 @@ async fn mpv_seek(position: f64, state: State<'_, AppState>) -> CommandResult<()
 }
 
 #[tauri::command]
+async fn mpv_seek_relative(offset: f64, state: State<'_, AppState>) -> CommandResult<()> {
+    let mpv = state.mpv_manager.read().await;
+    
+    // For relative seeking, we can send a relative seek command
+    // MPV supports relative seeking with the "relative" flag
+    mpv.send_command(vec![
+        serde_json::json!("seek"),
+        serde_json::json!(offset),
+        serde_json::json!("relative")
+    ]).await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn mpv_get_time_pos(state: State<'_, AppState>) -> CommandResult<f64> {
+    let mpv = state.mpv_manager.read().await;
+    
+    // Note: This is a simplified implementation
+    // For proper property getting, you'd need to implement response parsing
+    // For now, we'll return 0 as a placeholder
+    // You would need to implement proper IPC response handling in mpv.rs
+    Ok(0.0)
+}
+
+#[tauri::command]
 async fn mpv_set_subtitle_track(index: u32, state: State<'_, AppState>) -> CommandResult<()> {
     let mpv = state.mpv_manager.read().await;
     mpv.set_subtitle_track(index).await?;
@@ -834,12 +934,17 @@ fn format_size(bytes: u64) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(AppState::new())
+        .setup(|app| {
+            let state = AppState::new(app.handle());
+            app.manage(state);
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             // Config
             set_config,
             get_config,
+            set_password,
             // File Dialogs
             pick_file,
             pick_folder,
@@ -863,6 +968,8 @@ pub fn run() {
             mpv_pause,
             mpv_play,
             mpv_seek,
+            mpv_seek_relative,
+            mpv_get_time_pos,
             mpv_set_subtitle_track,
             mpv_set_audio_track,
             is_mpv_running,

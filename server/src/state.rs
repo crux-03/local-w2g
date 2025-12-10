@@ -60,6 +60,9 @@ pub struct AppState {
     /// Configuration
     pub config: Config,
 
+    /// Shared access password
+    pub access_password: String,
+
     /// Connected clients with their WebSocket senders
     pub clients: RwLock<HashMap<ClientId, ClientInfo>>,
 
@@ -79,10 +82,12 @@ pub struct AppState {
     pub activity_log: RwLock<Vec<ActivityLog>>,
 }
 
+
 impl AppState {
     pub fn new(config: Config) -> Self {
         Self {
             config,
+            access_password: generate_password(),
             clients: RwLock::new(HashMap::new()),
             owner_id: RwLock::new(None),
             permissions: RwLock::new(HashMap::new()),
@@ -100,7 +105,7 @@ impl AppState {
         let mut owner = self.owner_id.write().await;
         let is_owner = if owner.is_none() {
             *owner = Some(id);
-            println!("Client {} is now the owner", id);
+            tracing::info!("Client {} is now the owner", id);
             true
         } else {
             false
@@ -130,7 +135,7 @@ impl AppState {
             permissions.insert(id, ClientPermissions::default());
         }
 
-        println!("Client {} connected. Total clients: {}", id, clients.len());
+        tracing::info!("Client {} connected. Total clients: {}", id, clients.len());
 
         // Log activity
         self.log_activity(id, None, "connected".to_string()).await;
@@ -150,7 +155,7 @@ impl AppState {
         if owner.as_ref() == Some(id) {
             *owner = clients.keys().next().cloned();
             if let Some(new_owner) = &*owner {
-                println!("New owner: {}", new_owner);
+                tracing::info!("New owner: {}", new_owner);
                 // Grant full permissions to new owner
                 if let Some(perms) = permissions.get_mut(new_owner) {
                     *perms = ClientPermissions {
@@ -161,11 +166,11 @@ impl AppState {
                     };
                 }
             } else {
-                println!("No owner (all clients disconnected)");
+                tracing::info!("No owner (all clients disconnected)");
             }
         }
 
-        println!("Client {} disconnected. Total clients: {}", id, clients.len());
+        tracing::info!("Client {} disconnected. Total clients: {}", id, clients.len());
 
         // Log activity
         self.log_activity(*id, username, "disconnected".to_string()).await;
@@ -390,7 +395,7 @@ impl AppState {
                 };
             }
 
-            println!("Ownership transferred to {}", new_owner_id);
+            tracing::info!("Ownership transferred to {}", new_owner_id);
             true
         } else {
             false
@@ -398,3 +403,12 @@ impl AppState {
     }
 }
 
+use rand::{distr::Alphanumeric, Rng};
+
+fn generate_password() -> String {
+    rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect()
+}

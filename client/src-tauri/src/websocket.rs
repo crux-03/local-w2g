@@ -24,6 +24,7 @@ impl WebSocketClient {
         app_handle: AppHandle,
         client_id_ref: Arc<RwLock<Option<String>>>,
         is_owner_ref: Arc<RwLock<bool>>,
+        password: String
     ) -> CommandResult<()> {
         // Check if already connected
         if *self.is_connected.read().await {
@@ -47,6 +48,7 @@ impl WebSocketClient {
         // Connect to WebSocket
         let response = reqwest::Client::default()
             .get(&ws_url)
+            .header("X-Access-Key", password)
             .upgrade()
             .send()
             .await
@@ -202,7 +204,6 @@ impl WebSocketClient {
         // Spawn heartbeat task to keep connection alive (every 20 seconds)
         let sender_clone = self.sender.clone();
         let is_connected_clone = self.is_connected.clone();
-        let app_handle_heartbeat = app_handle.clone();
         tokio::spawn(async move {
             let mut ping_count = 0;
             loop {

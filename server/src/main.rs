@@ -1,12 +1,7 @@
 use axum::{
-    body::Body,
-    extract::{
+    body::Body, extract::{
         ws::{Message, WebSocket, WebSocketUpgrade}, DefaultBodyLimit, Multipart, Path, Query, State
-    },
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
-    routing::{get, post},
-    Router,
+    }, http::{header, StatusCode}, response::{IntoResponse, Response}, routing::{get, post}, Router
 };
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
@@ -23,6 +18,7 @@ mod config;
 mod state;
 mod ws;
 mod dto;
+mod middleware;
 
 use config::Config;
 use state::{AppState, VideoInfo};
@@ -50,9 +46,13 @@ async fn main() {
         .route("/ws", get(websocket_handler))
         .route("/upload", post(upload_handler))
         .route("/video/{video_id}", get(download_handler))
-        .layer(DefaultBodyLimit::max(max_upload_mb as usize))
         .route("/health", get(health_handler))
-        .with_state(app_state);
+        .layer(DefaultBodyLimit::max(max_upload_mb as usize))
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&app_state),
+            middleware::password_middleware::require_password
+        ))
+        .with_state(Arc::clone(&app_state));
 
     // Start server
     let addr = format!("{}:{}", config.host, config.port);
@@ -63,6 +63,7 @@ async fn main() {
     tracing::info!("Server listening on {}", addr);
     tracing::info!("Video storage directory: {}", config.video_storage_dir);
     tracing::info!("Max file upload: {}MB", config.max_file_size_mb);
+    tracing::info!("Session password: {}", app_state.access_password);
     axum::serve(listener, app)
         .await
         .expect("Server failed to start");

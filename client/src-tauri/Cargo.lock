@@ -526,6 +526,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "futures-util",
+ "mime_guess",
  "reqwest",
  "reqwest-websocket",
  "rfd 0.16.0",

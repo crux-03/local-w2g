@@ -32,4 +32,5 @@ futures-util = "0.3.31"
 chrono = { version = "0.4.42", features = ["serde"] }
 rfd = "0.16.0"
 tokio-util = { version = "0.7.17", features = ["io"] }
+mime_guess = "2.0.5"
 

@@ -6,14 +6,18 @@
     export let status: 'ready' | 'waiting' | 'error' = 'waiting';
     export let isOwner: boolean = false;
     export let isSelf: boolean = false;
+    export let viewerIsOwner: boolean = false; // Whether the current viewer is the owner
     export let downloadProgress: number = 0; // 0-100, 0 means not downloading
     export let downloadSpeed: string = '';
     
     const dispatch = createEventDispatcher();
     
     function handleContextMenu(event: MouseEvent) {
-        if (!isSelf && isOwner) {
-            // Only show context menu for other users if you're the owner
+        // Only show context menu if:
+        // 1. This is not yourself
+        // 2. AND you (the viewer) are the owner
+        if (!isSelf && viewerIsOwner) {
+            event.preventDefault(); // Prevent default browser context menu
             dispatch('contextmenu', { userId, event });
         }
     }

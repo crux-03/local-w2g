@@ -3,6 +3,7 @@
     import UserItem from "$lib/components/UserItem.svelte";
     import PlaylistItem from "$lib/components/PlaylistItem.svelte";
     import ContextMenu from "$lib/components/ContextMenu.svelte";
+    import HostControls from "$lib/components/HostControls.svelte";
     import { goto } from "$app/navigation";
     import { invoke } from "@tauri-apps/api/core";
     import { listen } from "@tauri-apps/api/event";
@@ -39,6 +40,9 @@
 
     // WebSocket event unlisteners
     let unlisteners: Array<() => void> = [];
+    
+    // Track pending playback (videos waiting to start after download)
+    let pendingPlayback = $state<Set<string>>(new Set());
 
     onMount(async () => {
         // Check connection status
@@ -177,10 +181,71 @@
         // Download progress updates
         const unlistenDownloadProgress = await listen<DownloadProgress>(
             "download-progress",
-            (event) => {
+            async (event) => {
                 const progress = event.payload;
                 $downloadProgress.set(progress.video_id, progress);
                 $downloadProgress = $downloadProgress; // Trigger reactivity
+                
+                // When download completes (progress >= 100), clean up and start playback
+                if (progress.progress >= 100) {
+                    console.log("Download complete for:", progress.video_id);
+                    
+                    // Remove from downloading set
+                    $downloadingVideos.delete(progress.video_id);
+                    $downloadingVideos = $downloadingVideos;
+                    
+                    // Get the video info from the playlist
+                    const video = $playlist.find(v => v.id === progress.video_id);
+                    if (video) {
+                        // Construct the expected file path
+                        const localPath = `${videoStoragePath}/${video.filename}`;
+                        
+                        // Verify the file actually exists before adding to downloaded
+                        try {
+                            const verifiedPath = await invoke("check_video_downloaded", {
+                                filename: video.filename,
+                            }) as string | null;
+                            
+                            if (verifiedPath) {
+                                console.log("Verified downloaded file at:", verifiedPath);
+                                $downloadedVideos.set(progress.video_id, verifiedPath);
+                                $downloadedVideos = $downloadedVideos;
+                                
+                                // If this video was pending playback, start it now
+                                if (pendingPlayback.has(progress.video_id)) {
+                                    console.log("Starting playback for:", video.filename);
+                                    pendingPlayback.delete(progress.video_id);
+                                    pendingPlayback = pendingPlayback;
+                                    
+                                    try {
+                                        await invoke("start_mpv", { videoPath: verifiedPath });
+                                        console.log("MPV started successfully");
+                                    } catch (error) {
+                                        console.error("Failed to start MPV:", error);
+                                    }
+                                }
+                            } else {
+                                console.error("File verification failed - file doesn't exist:", localPath);
+                            }
+                        } catch (error) {
+                            console.error("Error verifying downloaded file:", error);
+                        }
+                    }
+                    
+                    // Set ready status
+                    invoke("send_message", {
+                        messageType: "ready",
+                        data: true,
+                    }).catch((error) => {
+                        console.error("Failed to set ready status:", error);
+                    });
+                    
+                    // Clear progress after a short delay
+                    setTimeout(() => {
+                        $downloadProgress.delete(progress.video_id);
+                        $downloadProgress = $downloadProgress;
+                    }, 2000);
+                }
             },
         );
         unlisteners.push(unlistenDownloadProgress);
@@ -288,6 +353,7 @@
     async function handlePlaylistClick(videoId: string, filename: string) {
         // Prevent multiple clicks while downloading
         if ($downloadingVideos.has(videoId)) {
+            console.log("Already downloading, please wait...");
             return;
         }
 
@@ -302,44 +368,59 @@
                 });
 
                 if (localPath) {
+                    console.log("Found video on disk:", localPath);
                     // Found on disk, add to store
                     $downloadedVideos = $downloadedVideos.set(
                         videoId,
                         localPath,
                     );
                 } else {
-                    // Need to download first - add to downloading set
+                    // Need to download first
+                    console.log("Video not found locally, starting download...");
+                    
+                    // Add to downloading set
                     $downloadingVideos = $downloadingVideos.add(videoId);
-
-                    console.log("Downloading video first...");
-                    localPath = (await invoke("download_video_to_storage", {
+                    
+                    // Add to pending playback so we know to start MPV when download completes
+                    pendingPlayback.add(videoId);
+                    pendingPlayback = pendingPlayback;
+                    
+                    // Start download (returns immediately, download happens in background)
+                    await invoke("download_video_to_storage", {
                         videoId,
                         filename,
-                    })) as string;
+                    });
 
-                    // Remove from downloading, add to downloaded
-                    $downloadingVideos.delete(videoId);
-                    $downloadingVideos = $downloadingVideos;
-                    $downloadedVideos = $downloadedVideos.set(
-                        videoId,
-                        localPath,
-                    );
-
-                    // Clear download progress
-                    $downloadProgress.delete(videoId);
-                    $downloadProgress = $downloadProgress;
-
-                    console.log("Download complete, ready status set");
+                    console.log("Download initiated, will start playback when complete");
+                    
+                    // Exit - download progress listener will start MPV when ready
+                    return;
                 }
             }
 
-            // Now start MPV with local file
+            // Video is downloaded, verify it exists before starting MPV
+            console.log("Attempting to start MPV with:", localPath);
+            
+            // Double-check the file exists
+            const exists = await invoke("check_video_downloaded", {
+                filename,
+            });
+            
+            if (!exists) {
+                throw new Error(`File not found at expected location: ${localPath}`);
+            }
+            
+            // Start MPV with local file
             await invoke("start_mpv", { videoPath: localPath });
+            console.log("MPV started successfully");
         } catch (error) {
             console.error("Failed to start video:", error);
             // Remove from downloading on error
             $downloadingVideos.delete(videoId);
             $downloadingVideos = $downloadingVideos;
+            // Remove from pending playback
+            pendingPlayback.delete(videoId);
+            pendingPlayback = pendingPlayback;
             // Clear download progress
             $downloadProgress.delete(videoId);
             $downloadProgress = $downloadProgress;
@@ -412,58 +493,6 @@
         }
     }
 
-    // Host control functions
-    async function startSession() {
-        if (!$clientInfo.is_owner) return;
-
-        try {
-            // Start host's own MPV first
-            await invoke("mpv_play");
-
-            // Then send play command to start everyone else
-            await invoke("send_message", {
-                messageType: "play",
-                data: null,
-            });
-        } catch (error) {
-            console.error("Failed to start session:", error);
-        }
-    }
-
-    async function pauseAll() {
-        if (!$clientInfo.is_owner) return;
-
-        try {
-            // Pause host's own MPV first
-            await invoke("mpv_pause");
-
-            // Then send pause command to everyone else
-            await invoke("send_message", {
-                messageType: "pause",
-                data: null,
-            });
-        } catch (error) {
-            console.error("Failed to pause:", error);
-        }
-    }
-
-    async function seekToStart() {
-        if (!$clientInfo.is_owner) return;
-
-        try {
-            // Seek host's own MPV first
-            await invoke("mpv_seek", { position: 0 });
-
-            // Then send seek command to everyone else
-            await invoke("send_message", {
-                messageType: "seek",
-                data: 0,
-            });
-        } catch (error) {
-            console.error("Failed to seek:", error);
-        }
-    }
-
     function showContextMenu(event: CustomEvent) {
         if (!$clientInfo.is_owner) return;
 
@@ -498,11 +527,7 @@
         try {
             await invoke("send_message", {
                 messageType: "set_permission",
-                data: {
-                    client_id: userId,
-                    permission,
-                    value,
-                },
+                data: { client_id: userId, permission, value },
             });
         } catch (error) {
             console.error("Failed to set permission:", error);
@@ -516,6 +541,28 @@
 
     function getUserDisplayName(user: any, index: number): string {
         return user.username || `User ${index + 1}`;
+    }
+    
+    // Helper to get download progress for a specific user
+    function getUserDownloadProgress(userId: string) {
+        // Only show progress for local user for now
+        if (userId !== $clientInfo.client_id) {
+            return { progress: 0, speed: "" };
+        }
+        
+        // Get the active download progress for this user
+        const activeDownload = Array.from($downloadProgress.values()).find(
+            (p) => p.progress > 0 && p.progress < 100,
+        );
+        
+        if (activeDownload) {
+            return {
+                progress: activeDownload.progress,
+                speed: activeDownload.speed_display,
+            };
+        }
+        
+        return { progress: 0, speed: "" };
     }
 </script>
 
@@ -536,22 +583,23 @@
             <div class="user-list-content">
                 {#each $users as user, index (user.id)}
                     {@const isSelf = user.id === $clientInfo.client_id}
-                    {@const activeDownload = isSelf
-                        ? Array.from($downloadProgress.values()).find(
-                              (p) => p.progress > 0 && p.progress < 100,
-                          )
-                        : null}
+                    {@const downloadInfo = getUserDownloadProgress(user.id)}
                     <UserItem
                         userId={user.id}
                         username={getUserDisplayName(user, index)}
                         status={user.status}
                         isOwner={user.is_owner}
                         {isSelf}
+                        viewerIsOwner={$clientInfo.is_owner}
+                        downloadProgress={downloadInfo.progress}
+                        downloadSpeed={downloadInfo.speed}
                         on:contextmenu={showContextMenu}
                     />
                 {/each}
             </div>
         </div>
+        
+        <HostControls isOwner={$clientInfo.is_owner} />
 
         <button class="disconnect-btn" onclick={disconnect}>Disconnect</button>
     </div>
@@ -563,29 +611,6 @@
                 <span class="ping">10ms</span>
             </div>
         </div>
-
-        {#if $clientInfo.is_owner}
-            <div class="section host-controls">
-                <h3>Host Controls</h3>
-                <div class="control-buttons">
-                    <button
-                        onclick={startSession}
-                        class="control-btn start-btn"
-                    >
-                        ▶ Start Playback
-                    </button>
-                    <button onclick={pauseAll} class="control-btn pause-btn">
-                        ⏸ Pause All
-                    </button>
-                    <button onclick={seekToStart} class="control-btn seek-btn">
-                        ⏮ Seek to Start
-                    </button>
-                </div>
-                <div class="ready-status">
-                    Ready: {$users.filter((u) => u.is_ready).length} / {$users.length}
-                </div>
-            </div>
-        {/if}
 
         <div class="section settings-box">
             <h3>Settings</h3>
@@ -628,6 +653,7 @@
             <h3>Playlist</h3>
             <div class="playlist-content">
                 {#each $playlist as video, index (video.id)}
+                    {@const activeDownload = $downloadProgress.get(video.id)}
                     <PlaylistItem
                         videoId={video.id}
                         filename={video.filename}
@@ -635,6 +661,7 @@
                         isCurrent={index === $currentVideoIndex}
                         isDownloaded={$downloadedVideos.has(video.id)}
                         isDownloading={$downloadingVideos.has(video.id)}
+                        downloadProgress={activeDownload?.progress || 0}
                         on:play={() =>
                             handlePlaylistClick(video.id, video.filename)}
                     />
@@ -669,8 +696,8 @@
 
 <style>
     :root {
-        --bg-primary: #2f2f2f;
-        --bg-secondary: #1a1a1a;
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #242424;
         --bg-tertiary: #0f0f0f;
         --text-primary: #f6f6f6;
         --text-secondary: #a0a0a0;
@@ -750,14 +777,6 @@
         border-color: var(--accent-orange);
     }
 
-    /*.status-header.good {
-        border-color: var(--accent-green);
-    }
-
-    .status-header.bad {
-        border-color: var(--accent-red);
-    }*/
-
     .status-content {
         display: flex;
         flex-direction: column;
@@ -832,69 +851,6 @@
     .disconnect-btn:hover {
         background-color: #d32f2f;
         border-color: #d32f2f;
-    }
-
-    .host-controls {
-        flex-shrink: 0;
-    }
-
-    .control-buttons {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .control-btn {
-        flex: 1;
-        padding: 0.625rem 0.75rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        border-radius: 6px;
-        border: 1px solid var(--border-color);
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .start-btn {
-        background-color: var(--accent-green);
-        border-color: var(--accent-green);
-        color: white;
-    }
-
-    .start-btn:hover {
-        background-color: #45a049;
-        border-color: #45a049;
-    }
-
-    .pause-btn {
-        background-color: var(--accent-orange);
-        border-color: var(--accent-orange);
-        color: white;
-    }
-
-    .pause-btn:hover {
-        background-color: #e68900;
-        border-color: #e68900;
-    }
-
-    .seek-btn {
-        background-color: var(--accent-blue);
-        border-color: var(--accent-blue);
-        color: white;
-    }
-
-    .seek-btn:hover {
-        background-color: #2e5bb8;
-        border-color: #2e5bb8;
-    }
-
-    .ready-status {
-        text-align: center;
-        font-size: 0.875rem;
-        color: var(--text-secondary);
-        padding: 0.5rem;
-        background-color: var(--bg-tertiary);
-        border-radius: 4px;
     }
 
     .settings-box {
