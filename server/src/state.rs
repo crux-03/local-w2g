@@ -11,11 +11,11 @@ pub type ClientSender = mpsc::UnboundedSender<Message>;
 
 #[derive(Debug, Clone)]
 pub struct ClientInfo {
-    pub id: ClientId,
+    pub _id: ClientId,
     pub username: Option<String>,
     pub sender: ClientSender,
     pub is_ready: bool,
-    pub connected_at: DateTime<Utc>,
+    pub _connected_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +42,7 @@ pub struct VideoInfo {
     pub id: Uuid,
     pub filename: String,
     pub size_bytes: u64,
-    pub path: String,
+    pub _path: String,
     pub uploaded_at: DateTime<Utc>,
     pub uploader_id: ClientId,
 }
@@ -114,11 +114,11 @@ impl AppState {
         clients.insert(
             id,
             ClientInfo {
-                id,
+                _id: id,
                 username: None,
                 sender,
                 is_ready: false,
-                connected_at: Utc::now(),
+                _connected_at: Utc::now(),
             },
         );
 
@@ -307,7 +307,7 @@ impl AppState {
     }
 
     /// Get current video
-    pub async fn get_current_video(&self) -> Option<VideoInfo> {
+    pub async fn _get_current_video(&self) -> Option<VideoInfo> {
         let playlist = self.playlist.read().await;
         let current_idx = self.current_video_index.read().await;
 

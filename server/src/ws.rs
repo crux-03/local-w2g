@@ -423,7 +423,7 @@ pub async fn send_initial_message(user_id: Uuid, state: Arc<AppState>) -> anyhow
     Ok(())
 }
 
-async fn handle_request_state(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
+async fn handle_request_state(_user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Re-send all current state to the requesting client
     // This is used when a client's event listeners are set up after initial connection
     send_user_update(Arc::clone(&state)).await?;

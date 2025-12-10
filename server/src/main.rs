@@ -256,7 +256,7 @@ async fn upload_handler(
         id: video_id,
         filename: filename.clone(),
         size_bytes: file_size,
-        path: format!("{}/{}", state.config.video_storage_dir, video_id),
+        _path: format!("{}/{}", state.config.video_storage_dir, video_id),
         uploaded_at: Utc::now(),
         uploader_id: client_id,
     };
