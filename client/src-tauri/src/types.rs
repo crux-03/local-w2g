@@ -127,17 +127,6 @@ pub struct Video {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DownloadProgress {
-    pub video_id: String,
-    pub filename: String,
-    pub downloaded: u64,
-    pub total: u64,
-    pub progress: u64,
-    pub speed: u64,
-    pub speed_display: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub timestamp: DateTime<Utc>,
     pub user_id: String,
@@ -157,8 +146,9 @@ pub enum LogSource {
 pub type CommandResult<T> = Result<T, String>;
 
 /// Upload progress callback data
+/// TODO: Add support
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UploadProgress {
+pub struct _UploadProgress {
     pub loaded: u64,
     pub total: u64,
     pub percentage: f64,

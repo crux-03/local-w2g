@@ -99,11 +99,7 @@ impl WebSocketClient {
                             if let ServerMessage::OwnershipTransferred { ref new_owner_id } = server_msg {
                                 let current_id = client_id_ref.read().await;
                                 if let Some(id) = current_id.as_ref() {
-                                    if id == new_owner_id {
-                                        *is_owner_ref.write().await = true;
-                                    } else {
-                                        *is_owner_ref.write().await = false;
-                                    }
+                                    *is_owner_ref.write().await = id == new_owner_id;
                                 }
                             }
                             

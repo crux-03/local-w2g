@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tokio_util::io::ReaderStream;
-use types::{ClientMessage, CommandResult, LogEntry, LogSource, Video};
+use types::{ClientMessage, CommandResult, LogEntry, LogSource};
 use websocket::WebSocketClient;
 
 // Helper function to emit client-side logs
@@ -60,7 +60,7 @@ impl AppState {
         let config = if config_path.exists() {
             match std::fs::read_to_string(&config_path) {
                 Ok(content) => {
-                    serde_json::from_str(&content).unwrap_or_else(|_| ClientConfig {
+                    serde_json::from_str(&content).unwrap_or(ClientConfig {
                         server_url: None,
                         video_storage_path: None,
                         mpv_binary_path: None,
@@ -883,7 +883,7 @@ async fn mpv_seek_relative(offset: f64, state: State<'_, AppState>) -> CommandRe
 
 #[tauri::command]
 async fn mpv_get_time_pos(state: State<'_, AppState>) -> CommandResult<f64> {
-    let mpv = state.mpv_manager.read().await;
+    let _mpv = state.mpv_manager.read().await;
     
     // Note: This is a simplified implementation
     // For proper property getting, you'd need to implement response parsing

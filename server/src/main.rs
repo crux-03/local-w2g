@@ -324,7 +324,7 @@ async fn download_handler(
     );
 
     // Check if file exists
-    if !tokio::fs::metadata(&file_path).await.is_ok() {
+    if tokio::fs::metadata(&file_path).await.is_err() {
         return Err((StatusCode::NOT_FOUND, "Video file not found on disk".to_string()));
     }
 
@@ -368,9 +368,9 @@ async fn download_handler(
         );
     }
 
-    Ok(response
+    response
         .body(Body::from(buffer))
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Response error: {}", e)))?)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Response error: {}", e)))
 }
 
 async fn health_handler() -> impl IntoResponse {
