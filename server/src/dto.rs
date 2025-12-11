@@ -25,6 +25,15 @@ pub enum ClientMessage {
     },
     RequestState,
     Ping,
+    DownloadProgress {
+        video_id: String,
+        filename: String,
+        downloaded: u64,
+        total: u64,
+        progress: u64,
+        speed: u64,
+        speed_display: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +77,16 @@ pub enum ServerMessage {
     },
     Error { message: String },
     Pong,
+    DownloadProgress {
+        client_id: Uuid,
+        video_id: String,
+        filename: String,
+        downloaded: u64,
+        total: u64,
+        progress: u64,
+        speed: u64,
+        speed_display: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

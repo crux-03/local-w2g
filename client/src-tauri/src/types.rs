@@ -25,6 +25,15 @@ pub enum ClientMessage {
     },
     RequestState,
     Ping,
+    DownloadProgress {
+        video_id: String,
+        filename: String,
+        downloaded: u64,
+        total: u64,
+        progress: u64,
+        speed: u64,
+        speed_display: String,
+    },
 }
 
 /// Messages sent from server to client
@@ -69,6 +78,16 @@ pub enum ServerMessage {
     },
     Error { message: String },
     Pong,
+    DownloadProgress {
+        client_id: String,
+        video_id: String,
+        filename: String,
+        downloaded: u64,
+        total: u64,
+        progress: u64,
+        speed: u64,
+        speed_display: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +124,17 @@ pub struct Video {
     pub size_display: String,
     pub uploaded_at: DateTime<Utc>,
     pub uploader_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    pub video_id: String,
+    pub filename: String,
+    pub downloaded: u64,
+    pub total: u64,
+    pub progress: u64,
+    pub speed: u64,
+    pub speed_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

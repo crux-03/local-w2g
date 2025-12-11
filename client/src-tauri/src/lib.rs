@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tokio_util::io::ReaderStream;
-use types::{ClientMessage, CommandResult, LogEntry, LogSource};
+use types::{ClientMessage, CommandResult, LogEntry, LogSource, Video};
 use websocket::WebSocketClient;
 
 // Helper function to emit client-side logs
@@ -422,28 +422,19 @@ async fn upload_video(
 
     // Create multipart form
     let stream = ReaderStream::new(file);
-    let mime_type = mime_guess::from_path(&filename)
-        .first_or_octet_stream()
-        .as_ref()
-        .to_string();
-
     let part = reqwest::multipart::Part::stream(Body::wrap_stream(stream))
         .file_name(filename.clone())
-        .mime_str(&mime_type)
+        .mime_str("video/mp4")
         .map_err(|e| format!("Failed to create multipart: {}", e))?;
 
     let form = reqwest::multipart::Form::new().part("file", part);
 
-    // Build URL with client_id query param
     let server_url = if server_url.starts_with("http://") || server_url.starts_with("https://") {
         server_url
     } else {
         format!("http://{}", server_url)
     };
-
     let url = format!("{}/upload?client_id={}", server_url, client_id);
-    
-    println!("url: {url}");
 
     emit_client_log(&app_handle, "Starting upload...".to_string());
 
@@ -577,7 +568,8 @@ async fn download_video_to_storage(
     let url = format!("{}/video/{}", server_url, video_id);
     let password = state.password.read().await.clone();
 
-    // Spawn download task on a separate thread to avoid blocking
+    // Clone state for the spawned task
+    let ws_client = state.ws_client.clone();
     let app_handle_clone = app_handle.clone();
     let video_id_clone = video_id.clone();
     let filename_clone = filename.clone();
@@ -663,7 +655,9 @@ async fn download_video_to_storage(
                     0
                 };
 
-                // Emit progress event
+                let speed_display = format_speed(speed);
+
+                // Emit local progress event for UI responsiveness
                 let progress_data = serde_json::json!({
                     "video_id": video_id_clone,
                     "filename": filename_clone,
@@ -671,10 +665,22 @@ async fn download_video_to_storage(
                     "total": total_size,
                     "progress": progress,
                     "speed": speed,
-                    "speed_display": format_speed(speed),
+                    "speed_display": speed_display,
                 });
-
                 let _ = app_handle_clone.emit("download-progress", progress_data);
+
+                // Send progress update to server (to broadcast to all clients)
+                let ws = ws_client.read().await;
+                let _ = ws.send(ClientMessage::DownloadProgress {
+                    video_id: video_id_clone.clone(),
+                    filename: filename_clone.clone(),
+                    downloaded,
+                    total: total_size,
+                    progress,
+                    speed,
+                    speed_display: speed_display.clone(),
+                }).await;
+                drop(ws);
 
                 last_update = now;
                 last_downloaded = downloaded;
@@ -701,6 +707,18 @@ async fn download_video_to_storage(
             "speed_display": "Complete".to_string(),
         });
         let _ = app_handle_clone.emit("download-progress", progress_data);
+
+        // Send final progress to server
+        let ws = ws_client.read().await;
+        let _ = ws.send(ClientMessage::DownloadProgress {
+            video_id: video_id_clone,
+            filename: filename_clone,
+            downloaded,
+            total: total_size,
+            progress: 100,
+            speed: 0,
+            speed_display: "Complete".to_string(),
+        }).await;
     });
 
     // Return immediately
