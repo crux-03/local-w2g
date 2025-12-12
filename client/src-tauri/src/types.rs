@@ -25,6 +25,15 @@ pub enum ClientMessage {
     },
     RequestState,
     Ping,
+    DownloadProgress {
+        video_id: String,
+        filename: String,
+        downloaded: u64,
+        total: u64,
+        progress: u64,
+        speed: u64,
+        speed_display: String,
+    },
 }
 
 /// Messages sent from server to client
@@ -69,6 +78,16 @@ pub enum ServerMessage {
     },
     Error { message: String },
     Pong,
+    DownloadProgress {
+        client_id: String,
+        video_id: String,
+        filename: String,
+        downloaded: u64,
+        total: u64,
+        progress: u64,
+        speed: u64,
+        speed_display: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,8 +146,9 @@ pub enum LogSource {
 pub type CommandResult<T> = Result<T, String>;
 
 /// Upload progress callback data
+/// TODO: Add support
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UploadProgress {
+pub struct _UploadProgress {
     pub loaded: u64,
     pub total: u64,
     pub percentage: f64,

@@ -1,6 +1,7 @@
 use crate::types::{ClientMessage, CommandResult, ServerMessage};
 use futures_util::{SinkExt, StreamExt};
 use reqwest_websocket::{Message as WsMessage, RequestBuilderExt};
+use serde_json::json;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, RwLock};
@@ -98,11 +99,7 @@ impl WebSocketClient {
                             if let ServerMessage::OwnershipTransferred { ref new_owner_id } = server_msg {
                                 let current_id = client_id_ref.read().await;
                                 if let Some(id) = current_id.as_ref() {
-                                    if id == new_owner_id {
-                                        *is_owner_ref.write().await = true;
-                                    } else {
-                                        *is_owner_ref.write().await = false;
-                                    }
+                                    *is_owner_ref.write().await = id == new_owner_id;
                                 }
                             }
                             
@@ -158,6 +155,19 @@ impl WebSocketClient {
                                 }
                                 ServerMessage::Pong => {
                                     println!("Heartbeat: Received pong from server");
+                                },
+                                ServerMessage::DownloadProgress { client_id, video_id, filename, downloaded, total, progress, speed, speed_display } => {
+                                    let _ = app_handle_clone.emit("ws-download-progress", json!({
+                                        "type": "download_progress",
+                                        "client_id": client_id,
+                                        "video_id": video_id,
+                                        "filename": filename,
+                                        "downloaded": downloaded,
+                                        "total": total,
+                                        "progress": progress,
+                                        "speed": speed,
+                                        "speed_display": speed_display
+                                    }));
                                 }
                             }
                         }

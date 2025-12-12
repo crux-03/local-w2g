@@ -178,13 +178,52 @@
         });
         unlisteners.push(unlistenClientLog);
 
-        // Download progress updates
+        // Download progress updates from server (broadcast to all clients)
+        const unlistenServerDownloadProgress = await listen<ServerMessage>(
+            "ws-download-progress",
+            (event) => {
+                if (event.payload.type === "download_progress") {
+                    const serverProgress = event.payload as any;
+                    const progress = {
+                        client_id: serverProgress.client_id,
+                        video_id: serverProgress.video_id,
+                        filename: serverProgress.filename,
+                        downloaded: serverProgress.downloaded,
+                        total: serverProgress.total,
+                        progress: serverProgress.progress,
+                        speed: serverProgress.speed,
+                        speed_display: serverProgress.speed_display,
+                    };
+                    
+                    // Use composite key: client_id-video_id
+                    const key = `${progress.client_id}-${progress.video_id}`;
+                    $downloadProgress.set(key, progress);
+                    $downloadProgress = $downloadProgress;
+                    
+                    // Clean up completed downloads after delay
+                    if (progress.progress >= 100) {
+                        setTimeout(() => {
+                            $downloadProgress.delete(key);
+                            $downloadProgress = $downloadProgress;
+                        }, 2000);
+                    }
+                }
+            },
+        );
+        unlisteners.push(unlistenServerDownloadProgress);
+
+        // Local download progress updates (for immediate feedback before server broadcast)
         const unlistenDownloadProgress = await listen<DownloadProgress>(
             "download-progress",
             async (event) => {
                 const progress = event.payload;
-                $downloadProgress.set(progress.video_id, progress);
-                $downloadProgress = $downloadProgress; // Trigger reactivity
+                // Also store with composite key for consistency
+                const key = `${$clientInfo.client_id}-${progress.video_id}`;
+                $downloadProgress.set(key, {
+                    ...progress,
+                    client_id: $clientInfo.client_id || "",
+                });
+                $downloadProgress = $downloadProgress;
                 
                 // When download completes (progress >= 100), clean up and start playback
                 if (progress.progress >= 100) {
@@ -240,9 +279,10 @@
                         console.error("Failed to set ready status:", error);
                     });
                     
-                    // Clear progress after a short delay
+                    // Clean up local progress after a short delay (server broadcast will handle the key)
                     setTimeout(() => {
-                        $downloadProgress.delete(progress.video_id);
+                        const localKey = `${$clientInfo.client_id}-${progress.video_id}`;
+                        $downloadProgress.delete(localKey);
                         $downloadProgress = $downloadProgress;
                     }, 2000);
                 }
@@ -545,21 +585,15 @@
     
     // Helper to get download progress for a specific user
     function getUserDownloadProgress(userId: string) {
-        // Only show progress for local user for now
-        if (userId !== $clientInfo.client_id) {
-            return { progress: 0, speed: "" };
-        }
-        
-        // Get the active download progress for this user
-        const activeDownload = Array.from($downloadProgress.values()).find(
-            (p) => p.progress > 0 && p.progress < 100,
-        );
-        
-        if (activeDownload) {
-            return {
-                progress: activeDownload.progress,
-                speed: activeDownload.speed_display,
-            };
+        // Find any active downloads for this user
+        for (const [key, progress] of $downloadProgress.entries()) {
+            // Key format is "client_id-video_id"
+            if (key.startsWith(userId + "-") && progress.progress > 0 && progress.progress < 100) {
+                return {
+                    progress: progress.progress,
+                    speed: progress.speed_display,
+                };
+            }
         }
         
         return { progress: 0, speed: "" };

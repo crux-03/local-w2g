@@ -18,23 +18,12 @@ pub struct ClientInfo {
     pub _connected_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClientPermissions {
     pub allow_pause: bool,
     pub allow_seek: bool,
     pub allow_subtitle: bool,
     pub allow_audio: bool,
-}
-
-impl Default for ClientPermissions {
-    fn default() -> Self {
-        Self {
-            allow_pause: false,
-            allow_seek: false,
-            allow_subtitle: false,
-            allow_audio: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -379,11 +368,10 @@ impl AppState {
             let mut permissions = self.permissions.write().await;
 
             // Remove old owner's full permissions
-            if let Some(old_id) = old_owner {
-                if let Some(perms) = permissions.get_mut(&old_id) {
+            if let Some(old_id) = old_owner && let Some(perms) = permissions.get_mut(&old_id) {
                     *perms = ClientPermissions::default();
-                }
             }
+
 
             // Grant new owner full permissions
             if let Some(perms) = permissions.get_mut(&new_owner_id) {
