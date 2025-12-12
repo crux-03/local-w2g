@@ -71,4 +71,5 @@ export type ServerMessage =
   | { type: "all_ready" }
   | { type: "ownership_transferred"; new_owner_id: string }
   | { type: "error"; message: string }
-  | { type: "pong" };
+  | { type: "pong" }
+  | { type: "download_progress"; client_id: string, video_id: string, filename: string, downloaded: number, total: number, progress: number, speed: number, speed_display: string };

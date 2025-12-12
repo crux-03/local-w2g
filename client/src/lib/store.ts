@@ -19,8 +19,9 @@ export const downloadedVideos = writable<Map<string, string>>(new Map());
 // Currently downloading videos - set of video IDs
 export const downloadingVideos = writable<Set<string>>(new Set());
 
-// Download progress - maps video ID to progress info
+// Download progress - maps "client_id-video_id" to progress info
 export interface DownloadProgress {
+  client_id: string;  // Which client is downloading
   video_id: string;
   filename: string;
   downloaded: number;
@@ -52,60 +53,7 @@ export const myPermissions = derived(
   }
 );
 
-// Check if current user can perform actions (derived)
-export const canPause = derived(
-  [clientInfo, myPermissions],
-  ([$clientInfo, $myPermissions]) => {
-    if ($clientInfo.is_owner) return true;
-    return $myPermissions?.allow_pause || false;
-  }
-);
-
-export const canSeek = derived(
-  [clientInfo, myPermissions],
-  ([$clientInfo, $myPermissions]) => {
-    if ($clientInfo.is_owner) return true;
-    return $myPermissions?.allow_seek || false;
-  }
-);
-
-export const canChangeSubtitle = derived(
-  [clientInfo, myPermissions],
-  ([$clientInfo, $myPermissions]) => {
-    if ($clientInfo.is_owner) return true;
-    return $myPermissions?.allow_subtitle || false;
-  }
-);
-
-export const canChangeAudio = derived(
-  [clientInfo, myPermissions],
-  ([$clientInfo, $myPermissions]) => {
-    if ($clientInfo.is_owner) return true;
-    return $myPermissions?.allow_audio || false;
-  }
-);
-
-// Current video (derived)
-export const currentVideo = derived(
-  [playlist, currentVideoIndex],
-  ([$playlist, $currentVideoIndex]) => {
-    if ($currentVideoIndex === null) return null;
-    return $playlist[$currentVideoIndex] || null;
-  }
-);
-
-// Helper functions
-export function getPermissionForUser(userId: string): UserPermission | null {
-  const perms = get(permissions);
-  return perms.get(userId) || null;
-}
-
-export function getUserById(userId: string): User | null {
-  const userList = get(users);
-  return userList.find(u => u.id === userId) || null;
-}
-
-// Reset all state (on disconnect)
+// Reset all state (used on disconnect)
 export function resetState() {
   connected.set(false);
   clientInfo.set({ client_id: null, is_owner: false });

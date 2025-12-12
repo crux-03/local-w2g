@@ -423,6 +423,35 @@ pub async fn send_initial_message(user_id: Uuid, state: Arc<AppState>) -> anyhow
     Ok(())
 }
 
+async fn handle_download_progress(
+    video_id: String,
+    filename: String,
+    downloaded: u64,
+    total: u64,
+    progress: u64,
+    speed: u64,
+    speed_display: String,
+    user_id: Uuid,
+    state: Arc<AppState>,
+) -> anyhow::Result<()> {
+    // Broadcast download progress to all clients (including sender)
+    let response = ServerMessage::DownloadProgress {
+        client_id: user_id,
+        video_id,
+        filename,
+        downloaded,
+        total,
+        progress,
+        speed,
+        speed_display,
+    };
+    let bytes = serde_json::to_string(&response)?.into();
+    
+    state.broadcast_all(Message::Text(bytes)).await;
+    
+    Ok(())
+}
+
 async fn handle_request_state(_user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Re-send all current state to the requesting client
     // This is used when a client's event listeners are set up after initial connection
@@ -469,6 +498,28 @@ pub async fn handle_command(message: &str, user_id: Uuid, state: Arc<AppState>) 
         },
         ClientMessage::Ping => {
             handle_ping(user_id, state).await
+        },
+        ClientMessage::DownloadProgress {
+            video_id,
+            filename,
+            downloaded,
+            total,
+            progress,
+            speed,
+            speed_display,
+        } => {
+            handle_download_progress(
+                video_id,
+                filename,
+                downloaded,
+                total,
+                progress,
+                speed,
+                speed_display,
+                user_id,
+                state,
+            )
+            .await
         },
     }
 }

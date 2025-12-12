@@ -177,7 +177,7 @@ impl MpvManager {
             .await
     }
 
-    pub async fn get_property(&self, property: &str) -> CommandResult<Value> {
+    pub async fn _get_property(&self, property: &str) -> CommandResult<Value> {
         // Note: This is a simplified version. For proper property getting,
         // you'd need to implement response parsing from mpv's JSON IPC.
         self.send_command(vec![json!("get_property"), json!(property)])
