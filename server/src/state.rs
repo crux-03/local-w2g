@@ -240,6 +240,18 @@ impl AppState {
         }
     }
 
+    /// Reset all clients' ready status to false
+    /// Called when the host selects a different video
+    pub async fn reset_all_ready_status(&self) {
+        let mut clients = self.clients.write().await;
+
+        for client in clients.values_mut() {
+            client.is_ready = false;
+        }
+
+        tracing::debug!("Reset ready status for all {} clients", clients.len());
+    }
+
     /// Check if client has a specific permission
     pub async fn has_permission(&self, client_id: &ClientId, permission: &str) -> bool {
         // Owner always has all permissions

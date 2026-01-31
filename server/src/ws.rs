@@ -9,8 +9,8 @@ use crate::{dto, state::AppState};
 async fn handle_pause(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Check permission
     if !state.has_permission(&user_id, "pause").await {
-        let error = ServerMessage::Error { 
-            message: "You don't have permission to pause".to_string() 
+        let error = ServerMessage::Error {
+            message: "You don't have permission to pause".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -21,24 +21,24 @@ async fn handle_pause(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()>
     let bytes = serde_json::to_string(&response)?.into();
 
     state.broadcast(&user_id, Message::Text(bytes)).await;
-    
+
     // Log activity
     let clients = state.clients.read().await;
     let username = clients.get(&user_id).and_then(|c| c.username.clone());
     drop(clients);
     state.log_activity(user_id, username, "paused playback".to_string()).await;
-    
+
     // Send updated logs to all clients
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_play(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Check permission
     if !state.has_permission(&user_id, "pause").await {
-        let error = ServerMessage::Error { 
-            message: "You don't have permission to play".to_string() 
+        let error = ServerMessage::Error {
+            message: "You don't have permission to play".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -49,24 +49,24 @@ async fn handle_play(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> 
     let bytes = serde_json::to_string(&response)?.into();
 
     state.broadcast(&user_id, Message::Text(bytes)).await;
-    
+
     // Log activity
     let clients = state.clients.read().await;
     let username = clients.get(&user_id).and_then(|c| c.username.clone());
     drop(clients);
     state.log_activity(user_id, username, "resumed playback".to_string()).await;
-    
+
     // Send updated logs to all clients
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_seek(position: f64, user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Check permission
     if !state.has_permission(&user_id, "seek").await {
-        let error = ServerMessage::Error { 
-            message: "You don't have permission to seek".to_string() 
+        let error = ServerMessage::Error {
+            message: "You don't have permission to seek".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -77,25 +77,25 @@ async fn handle_seek(position: f64, user_id: Uuid, state: Arc<AppState>) -> anyh
     let bytes = serde_json::to_string(&response)?.into();
 
     state.broadcast(&user_id, Message::Text(bytes)).await;
-    
+
     // Log activity
     let clients = state.clients.read().await;
     let username = clients.get(&user_id).and_then(|c| c.username.clone());
     drop(clients);
     let time = format_time(position);
     state.log_activity(user_id, username, format!("seeked to {}", time)).await;
-    
+
     // Send updated logs to all clients
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_subtitle_track(index: u32, user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Check permission
     if !state.has_permission(&user_id, "subtitle").await {
-        let error = ServerMessage::Error { 
-            message: "You don't have permission to change subtitles".to_string() 
+        let error = ServerMessage::Error {
+            message: "You don't have permission to change subtitles".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -106,24 +106,24 @@ async fn handle_subtitle_track(index: u32, user_id: Uuid, state: Arc<AppState>) 
     let bytes = serde_json::to_string(&response)?.into();
 
     state.broadcast(&user_id, Message::Text(bytes)).await;
-    
+
     // Log activity
     let clients = state.clients.read().await;
     let username = clients.get(&user_id).and_then(|c| c.username.clone());
     drop(clients);
     state.log_activity(user_id, username, format!("changed subtitle track to {}", index)).await;
-    
+
     // Send updated logs to all clients
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_audio_track(index: u32, user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     // Check permission
     if !state.has_permission(&user_id, "audio").await {
-        let error = ServerMessage::Error { 
-            message: "You don't have permission to change audio".to_string() 
+        let error = ServerMessage::Error {
+            message: "You don't have permission to change audio".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -134,63 +134,63 @@ async fn handle_audio_track(index: u32, user_id: Uuid, state: Arc<AppState>) -> 
     let bytes = serde_json::to_string(&response)?.into();
 
     state.broadcast(&user_id, Message::Text(bytes)).await;
-    
+
     // Log activity
     let clients = state.clients.read().await;
     let username = clients.get(&user_id).and_then(|c| c.username.clone());
     drop(clients);
     state.log_activity(user_id, username, format!("changed audio track to {}", index)).await;
-    
+
     // Send updated logs to all clients
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_ready(ready: bool, user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     state.set_ready(user_id, ready).await;
-    
+
     let response = ServerMessage::Ready { client_id: user_id, value: ready };
     let bytes = serde_json::to_string(&response)?.into();
 
     state.broadcast_all(Message::Text(bytes)).await;
-    
+
     // Check if all clients are ready
     if state.all_ready().await {
         let all_ready_msg = ServerMessage::AllReady;
         let bytes = serde_json::to_string(&all_ready_msg)?.into();
         state.broadcast_all(Message::Text(bytes)).await;
     }
-    
+
     // Send updated user list
     send_user_update(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_set_username(username: String, user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     state.set_username(user_id, username).await;
-    
+
     // Send updated user list to all clients
     send_user_update(Arc::clone(&state)).await?;
-    
+
     // Send updated logs to all clients
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
 async fn handle_set_permission(
-    target_id: String, 
-    permission: String, 
+    target_id: String,
+    permission: String,
     value: bool,
-    user_id: Uuid, 
+    user_id: Uuid,
     state: Arc<AppState>
 ) -> anyhow::Result<()> {
     // Only owner can set permissions
     if !state.is_owner(&user_id).await {
-        let error = ServerMessage::Error { 
-            message: "Only the owner can change permissions".to_string() 
+        let error = ServerMessage::Error {
+            message: "Only the owner can change permissions".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -199,11 +199,11 @@ async fn handle_set_permission(
 
     // Parse target UUID
     let target_uuid = Uuid::parse_str(&target_id)?;
-    
+
     // Can't change owner's permissions
     if state.is_owner(&target_uuid).await {
-        let error = ServerMessage::Error { 
-            message: "Cannot change owner's permissions".to_string() 
+        let error = ServerMessage::Error {
+            message: "Cannot change owner's permissions".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -211,10 +211,10 @@ async fn handle_set_permission(
     }
 
     state.set_permission(target_uuid, &permission, value).await;
-    
+
     // Send updated permissions to all clients
     send_permissions_update(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
@@ -225,8 +225,8 @@ async fn handle_transfer_ownership(
 ) -> anyhow::Result<()> {
     // Only owner can transfer ownership
     if !state.is_owner(&user_id).await {
-        let error = ServerMessage::Error { 
-            message: "Only the owner can transfer ownership".to_string() 
+        let error = ServerMessage::Error {
+            message: "Only the owner can transfer ownership".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
@@ -235,37 +235,37 @@ async fn handle_transfer_ownership(
 
     // Parse target UUID
     let target_uuid = Uuid::parse_str(&target_id)?;
-    
+
     if state.transfer_ownership(target_uuid).await {
         let response = ServerMessage::OwnershipTransferred { new_owner_id: target_uuid };
         let bytes = serde_json::to_string(&response)?.into();
         state.broadcast_all(Message::Text(bytes)).await;
-        
+
         // Send updated user list and permissions
         send_user_update(Arc::clone(&state)).await?;
         send_permissions_update(Arc::clone(&state)).await?;
-        
+
         // Log activity
         let clients = state.clients.read().await;
         let old_owner_name = clients.get(&user_id).and_then(|c| c.username.clone());
         let new_owner_name = clients.get(&target_uuid).and_then(|c| c.username.clone());
         drop(clients);
-        
+
         state.log_activity(
-            user_id, 
-            old_owner_name.clone(), 
+            user_id,
+            old_owner_name.clone(),
             format!("transferred ownership to {}", new_owner_name.unwrap_or_else(|| target_uuid.to_string()))
         ).await;
-        
+
         send_activity_logs(Arc::clone(&state)).await?;
     } else {
-        let error = ServerMessage::Error { 
-            message: "Failed to transfer ownership".to_string() 
+        let error = ServerMessage::Error {
+            message: "Failed to transfer ownership".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
     }
-    
+
     Ok(())
 }
 
@@ -276,18 +276,34 @@ async fn handle_select_video(
 ) -> anyhow::Result<()> {
     // Only owner can select video
     if !state.is_owner(&user_id).await {
-        let error = ServerMessage::Error { 
-            message: "Only the owner can select videos".to_string() 
+        let error = ServerMessage::Error {
+            message: "Only the owner can select videos".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
         return Ok(());
     }
 
+    // Check if this is actually a different video
+    let current_index = *state.current_video_index.read().await;
+    let is_different_video = current_index != Some(index);
+
     if state.set_current_video(index).await {
+        // If selecting a different video, reset all clients' ready status
+        // This forces everyone to re-confirm they have the new video
+        if is_different_video {
+            state.reset_all_ready_status().await;
+            tracing::info!("Video changed to index {}, reset all ready states", index);
+        }
+
         // Send updated playlist to all clients
         send_playlist_update(Arc::clone(&state)).await?;
-        
+
+        // Send updated user list (to reflect reset ready states)
+        if is_different_video {
+            send_user_update(Arc::clone(&state)).await?;
+        }
+
         // Log activity
         let playlist = state.get_playlist().await;
         if let Some(video) = playlist.get(index) {
@@ -298,22 +314,22 @@ async fn handle_select_video(
             send_activity_logs(Arc::clone(&state)).await?;
         }
     } else {
-        let error = ServerMessage::Error { 
-            message: "Invalid video index".to_string() 
+        let error = ServerMessage::Error {
+            message: "Invalid video index".to_string()
         };
         let bytes = serde_json::to_string(&error)?.into();
         state.send_to_client(&user_id, Message::Text(bytes)).await;
     }
-    
+
     Ok(())
 }
 
 /// Send user list update to all clients
 pub async fn send_user_update(state: Arc<AppState>) -> anyhow::Result<()> {
     let mut users: Vec<dto::User> = Vec::new();
-    
+
     let clients = state.clients.read().await;
-    
+
     for (client_id, client) in clients.iter() {
         let user = dto::User {
             id: client_id.to_string(),
@@ -324,10 +340,10 @@ pub async fn send_user_update(state: Arc<AppState>) -> anyhow::Result<()> {
         };
         users.push(user);
     }
-    
+
     let response = ServerMessage::UserUpdate { users };
     let bytes = serde_json::to_string(&response)?.into();
-    
+
     state.broadcast_all(Message::Text(bytes)).await;
     Ok(())
 }
@@ -335,7 +351,7 @@ pub async fn send_user_update(state: Arc<AppState>) -> anyhow::Result<()> {
 /// Send permissions update to all clients
 pub async fn send_permissions_update(state: Arc<AppState>) -> anyhow::Result<()> {
     let all_permissions = state.get_all_permissions().await;
-    
+
     let permissions: Vec<UserPermission> = all_permissions
         .iter()
         .map(|(id, perms)| UserPermission {
@@ -346,10 +362,10 @@ pub async fn send_permissions_update(state: Arc<AppState>) -> anyhow::Result<()>
             allow_audio: perms.allow_audio,
         })
         .collect();
-    
+
     let response = ServerMessage::PermissionsUpdate { permissions };
     let bytes = serde_json::to_string(&response)?.into();
-    
+
     state.broadcast_all(Message::Text(bytes)).await;
     Ok(())
 }
@@ -358,7 +374,7 @@ pub async fn send_permissions_update(state: Arc<AppState>) -> anyhow::Result<()>
 pub async fn send_playlist_update(state: Arc<AppState>) -> anyhow::Result<()> {
     let playlist = state.get_playlist().await;
     let current_index = *state.current_video_index.read().await;
-    
+
     let videos: Vec<Video> = playlist
         .iter()
         .map(|v| Video {
@@ -370,13 +386,13 @@ pub async fn send_playlist_update(state: Arc<AppState>) -> anyhow::Result<()> {
             uploader_id: v.uploader_id.to_string(),
         })
         .collect();
-    
+
     let response = ServerMessage::PlaylistUpdate {
         videos,
         current_index,
     };
     let bytes = serde_json::to_string(&response)?.into();
-    
+
     state.broadcast_all(Message::Text(bytes)).await;
     Ok(())
 }
@@ -384,7 +400,7 @@ pub async fn send_playlist_update(state: Arc<AppState>) -> anyhow::Result<()> {
 /// Send activity logs to all clients
 pub async fn send_activity_logs(state: Arc<AppState>) -> anyhow::Result<()> {
     let logs = state.get_recent_logs(20).await;
-    
+
     let log_entries: Vec<LogEntry> = logs
         .iter()
         .map(|log| LogEntry {
@@ -395,31 +411,31 @@ pub async fn send_activity_logs(state: Arc<AppState>) -> anyhow::Result<()> {
             source: log.source.clone(),
         })
         .collect();
-    
+
     let response = ServerMessage::ActivityLog { logs: log_entries };
     let bytes = serde_json::to_string(&response)?.into();
-    
+
     state.broadcast_all(Message::Text(bytes)).await;
     Ok(())
 }
 
 pub async fn send_initial_message(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> {
     let is_owner = state.is_owner(&user_id).await;
-    
+
     // Send connected message
-    let response = ServerMessage::Connected { 
-        client_id: user_id, 
-        is_owner 
+    let response = ServerMessage::Connected {
+        client_id: user_id,
+        is_owner
     };
     let bytes = serde_json::to_string(&response)?.into();
     state.send_to_client(&user_id, Message::Text(bytes)).await;
-    
+
     // Send current state to new client
     send_user_update(Arc::clone(&state)).await?;
     send_permissions_update(Arc::clone(&state)).await?;
     send_playlist_update(Arc::clone(&state)).await?;
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
@@ -446,9 +462,9 @@ async fn handle_download_progress(
         speed_display,
     };
     let bytes = serde_json::to_string(&response)?.into();
-    
+
     state.broadcast_all(Message::Text(bytes)).await;
-    
+
     Ok(())
 }
 
@@ -459,7 +475,7 @@ async fn handle_request_state(_user_id: Uuid, state: Arc<AppState>) -> anyhow::R
     send_permissions_update(Arc::clone(&state)).await?;
     send_playlist_update(Arc::clone(&state)).await?;
     send_activity_logs(Arc::clone(&state)).await?;
-    
+
     Ok(())
 }
 
@@ -469,7 +485,7 @@ async fn handle_ping(user_id: Uuid, state: Arc<AppState>) -> anyhow::Result<()> 
     let response = ServerMessage::Pong;
     let bytes = serde_json::to_string(&response)?.into();
     state.send_to_client(&user_id, Message::Text(bytes)).await;
-    
+
     Ok(())
 }
 
@@ -530,7 +546,7 @@ fn format_time(seconds: f64) -> String {
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let secs = total_seconds % 60;
-    
+
     if hours > 0 {
         format!("{:02}:{:02}:{:02}", hours, minutes, secs)
     } else {

@@ -1,30 +1,30 @@
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
-    
+    import { createEventDispatcher } from "svelte";
+
     export let userId: string;
     export let username: string;
-    export let status: 'ready' | 'waiting' | 'error' = 'waiting';
+    export let status: "ready" | "waiting" | "error" = "waiting";
     export let isOwner: boolean = false;
     export let isSelf: boolean = false;
     export let viewerIsOwner: boolean = false; // Whether the current viewer is the owner
     export let downloadProgress: number = 0; // 0-100, 0 means not downloading
-    export let downloadSpeed: string = '';
-    
+    export let downloadSpeed: string = "";
+
     const dispatch = createEventDispatcher();
-    
+
     function handleContextMenu(event: MouseEvent) {
         // Only show context menu if:
         // 1. This is not yourself
         // 2. AND you (the viewer) are the owner
         if (!isSelf && viewerIsOwner) {
             event.preventDefault(); // Prevent default browser context menu
-            dispatch('contextmenu', { userId, event });
+            dispatch("contextmenu", { userId, event });
         }
     }
 </script>
 
-<div 
-    class="user-item" 
+<div
+    class="user-item"
     class:self={isSelf}
     class:downloading={downloadProgress > 0 && downloadProgress < 100}
     role="button"
@@ -45,7 +45,7 @@
                 <span class="owner-badge">Owner</span>
             {/if}
         </div>
-        
+
         {#if downloadProgress > 0 && downloadProgress < 100}
             <div class="download-status">
                 <div class="progress-text">
@@ -53,7 +53,10 @@
                     <span class="speed">{downloadSpeed}</span>
                 </div>
                 <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: {downloadProgress}%"></div>
+                    <div
+                        class="progress-bar-fill"
+                        style="width: {downloadProgress}%"
+                    ></div>
                 </div>
             </div>
         {/if}
@@ -70,6 +73,7 @@
         margin-bottom: 0.25rem;
         cursor: pointer;
         transition: background-color 0.2s;
+        overflow: hidden; /* Prevent any overflow */
     }
 
     .user-item:hover {
@@ -91,6 +95,7 @@
         gap: 0.375rem;
         flex: 1;
         min-width: 0;
+        overflow: hidden; /* Prevent overflow */
     }
 
     .user-header {
@@ -144,8 +149,10 @@
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
-        width: 100%;
-        padding-left: 20px; /* Align with username */
+        /* Fixed: Use calc to account for the status dot alignment */
+        width: calc(100% - 20px);
+        margin-left: 20px; /* Align with username, using margin instead of padding */
+        box-sizing: border-box;
     }
 
     .progress-text {
@@ -176,9 +183,7 @@
 
     .progress-bar-fill {
         height: 100%;
-        background: linear-gradient(90deg, 
-            var(--accent-blue) 0%, 
-            #64b5f6 100%);
+        background: linear-gradient(90deg, var(--accent-blue) 0%, #64b5f6 100%);
         transition: width 0.3s ease;
         border-radius: 2px;
     }
