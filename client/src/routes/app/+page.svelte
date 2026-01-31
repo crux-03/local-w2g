@@ -40,9 +40,15 @@
 
     // WebSocket event unlisteners
     let unlisteners: Array<() => void> = [];
-    
+
     // Track pending playback (videos waiting to start after download)
     let pendingPlayback = $state<Set<string>>(new Set());
+
+    // Track if MPV is currently playing something
+    let currentlyPlayingVideoId = $state<string | null>(null);
+
+    // Track previous video index to detect changes
+    let previousVideoIndex = $state<number | null>(null);
 
     onMount(async () => {
         // Check connection status
@@ -114,6 +120,34 @@
         }
 
         $downloadedVideos = downloaded;
+
+        // Update ready status based on current video
+        await updateReadyStatusForCurrentVideo();
+    }
+
+    // Update ready status based on whether we have the current video downloaded
+    async function updateReadyStatusForCurrentVideo() {
+        if ($currentVideoIndex === null || $playlist.length === 0) {
+            return;
+        }
+
+        const currentVideo = $playlist[$currentVideoIndex];
+        if (!currentVideo) return;
+
+        const isDownloaded = $downloadedVideos.has(currentVideo.id);
+        const isDownloading = $downloadingVideos.has(currentVideo.id);
+
+        // Only set ready if we have the video downloaded and not currently downloading
+        const shouldBeReady = isDownloaded && !isDownloading;
+
+        try {
+            await invoke("send_message", {
+                messageType: "ready",
+                data: shouldBeReady,
+            });
+        } catch (error) {
+            console.error("Failed to update ready status:", error);
+        }
     }
 
     onDestroy(() => {
@@ -147,13 +181,28 @@
         );
         unlisteners.push(unlistenPermissions);
 
-        // Playlist updates
+        // Playlist updates - this is where video selection changes come through
         const unlistenPlaylist = await listen<ServerMessage>(
             "ws-playlist-update",
-            (event) => {
+            async (event) => {
                 if (event.payload.type === "playlist_update") {
                     $playlist = event.payload.videos;
-                    $currentVideoIndex = event.payload.current_index;
+                    const newIndex = event.payload.current_index;
+                    const oldIndex = $currentVideoIndex;
+                    $currentVideoIndex = newIndex;
+
+                    // Detect if the current video changed
+                    if (newIndex !== null && newIndex !== oldIndex) {
+                        console.log(
+                            "Current video changed from",
+                            oldIndex,
+                            "to",
+                            newIndex,
+                        );
+                        await handleVideoSelectionChanged(newIndex);
+                    }
+
+                    previousVideoIndex = newIndex;
                 }
             },
         );
@@ -194,12 +243,12 @@
                         speed: serverProgress.speed,
                         speed_display: serverProgress.speed_display,
                     };
-                    
+
                     // Use composite key: client_id-video_id
                     const key = `${progress.client_id}-${progress.video_id}`;
                     $downloadProgress.set(key, progress);
                     $downloadProgress = $downloadProgress;
-                    
+
                     // Clean up completed downloads after delay
                     if (progress.progress >= 100) {
                         setTimeout(() => {
@@ -224,62 +273,85 @@
                     client_id: $clientInfo.client_id || "",
                 });
                 $downloadProgress = $downloadProgress;
-                
-                // When download completes (progress >= 100), clean up and start playback
+
+                // When download completes (progress >= 100), clean up and maybe start playback
                 if (progress.progress >= 100) {
                     console.log("Download complete for:", progress.video_id);
-                    
+
                     // Remove from downloading set
                     $downloadingVideos.delete(progress.video_id);
                     $downloadingVideos = $downloadingVideos;
-                    
+
                     // Get the video info from the playlist
-                    const video = $playlist.find(v => v.id === progress.video_id);
+                    const video = $playlist.find(
+                        (v) => v.id === progress.video_id,
+                    );
                     if (video) {
-                        // Construct the expected file path
-                        const localPath = `${videoStoragePath}/${video.filename}`;
-                        
                         // Verify the file actually exists before adding to downloaded
                         try {
-                            const verifiedPath = await invoke("check_video_downloaded", {
-                                filename: video.filename,
-                            }) as string | null;
-                            
+                            const verifiedPath = (await invoke(
+                                "check_video_downloaded",
+                                {
+                                    filename: video.filename,
+                                },
+                            )) as string | null;
+
                             if (verifiedPath) {
-                                console.log("Verified downloaded file at:", verifiedPath);
-                                $downloadedVideos.set(progress.video_id, verifiedPath);
+                                console.log(
+                                    "Verified downloaded file at:",
+                                    verifiedPath,
+                                );
+                                $downloadedVideos.set(
+                                    progress.video_id,
+                                    verifiedPath,
+                                );
                                 $downloadedVideos = $downloadedVideos;
-                                
-                                // If this video was pending playback, start it now
+
+                                // ONLY start MPV if this video was explicitly pending playback
+                                // AND we're not already playing something else
                                 if (pendingPlayback.has(progress.video_id)) {
-                                    console.log("Starting playback for:", video.filename);
+                                    console.log(
+                                        "Starting playback for pending video:",
+                                        video.filename,
+                                    );
                                     pendingPlayback.delete(progress.video_id);
                                     pendingPlayback = pendingPlayback;
-                                    
+
                                     try {
-                                        await invoke("start_mpv", { videoPath: verifiedPath });
+                                        await invoke("start_mpv", {
+                                            videoPath: verifiedPath,
+                                        });
+                                        currentlyPlayingVideoId =
+                                            progress.video_id;
                                         console.log("MPV started successfully");
                                     } catch (error) {
-                                        console.error("Failed to start MPV:", error);
+                                        console.error(
+                                            "Failed to start MPV:",
+                                            error,
+                                        );
                                     }
+                                } else {
+                                    console.log(
+                                        "Download complete but not pending playback, skipping MPV start",
+                                    );
                                 }
                             } else {
-                                console.error("File verification failed - file doesn't exist:", localPath);
+                                console.error(
+                                    "File verification failed - file doesn't exist",
+                                );
                             }
                         } catch (error) {
-                            console.error("Error verifying downloaded file:", error);
+                            console.error(
+                                "Error verifying downloaded file:",
+                                error,
+                            );
                         }
                     }
-                    
-                    // Set ready status
-                    invoke("send_message", {
-                        messageType: "ready",
-                        data: true,
-                    }).catch((error) => {
-                        console.error("Failed to set ready status:", error);
-                    });
-                    
-                    // Clean up local progress after a short delay (server broadcast will handle the key)
+
+                    // Update ready status based on current video
+                    await updateReadyStatusForCurrentVideo();
+
+                    // Clean up local progress after a short delay
                     setTimeout(() => {
                         const localKey = `${$clientInfo.client_id}-${progress.video_id}`;
                         $downloadProgress.delete(localKey);
@@ -342,6 +414,90 @@
             goto("/");
         });
         unlisteners.push(unlistenDisconnected);
+    }
+
+    // Handle when the host selects a different video
+    async function handleVideoSelectionChanged(newIndex: number) {
+        const video = $playlist[newIndex];
+        if (!video) return;
+
+        console.log("Video selection changed to:", video.filename);
+
+        // Check if we have the video downloaded
+        let localPath = $downloadedVideos.get(video.id);
+
+        if (localPath) {
+            // Video is already downloaded - update ready status
+            console.log("Video already downloaded at:", localPath);
+            await updateReadyStatusForCurrentVideo();
+        } else {
+            // Video not downloaded - set status to waiting first
+            try {
+                await invoke("send_message", {
+                    messageType: "ready",
+                    data: false,
+                });
+            } catch (error) {
+                console.error("Failed to set ready status:", error);
+            }
+
+            // Check if it exists on disk (might have been downloaded outside the app)
+            try {
+                const existingPath = (await invoke("check_video_downloaded", {
+                    filename: video.filename,
+                })) as string | null;
+
+                if (existingPath) {
+                    console.log("Found video on disk:", existingPath);
+                    $downloadedVideos.set(video.id, existingPath);
+                    $downloadedVideos = $downloadedVideos;
+                    await updateReadyStatusForCurrentVideo();
+                    return;
+                }
+            } catch (error) {
+                console.error("Error checking for video:", error);
+            }
+
+            // Video not found locally - auto-start download if config is set up
+            if (!videoStoragePath) {
+                console.error(
+                    "Video storage path not configured - cannot auto-download",
+                );
+                // User will see the config warning in UI
+                return;
+            }
+
+            // Check if already downloading
+            if ($downloadingVideos.has(video.id)) {
+                console.log("Video already downloading");
+                return;
+            }
+
+            // Auto-start download for the newly selected video
+            console.log(
+                "Auto-starting download for selected video:",
+                video.filename,
+            );
+
+            // Add to downloading set
+            $downloadingVideos = $downloadingVideos.add(video.id);
+
+            // DON'T add to pending playback - we want to wait for host to press play
+            // The user can manually click to add to pending playback if they want
+
+            try {
+                // Start download (returns immediately, download happens in background)
+                await invoke("download_video_to_storage", {
+                    videoId: video.id,
+                    filename: video.filename,
+                });
+                console.log("Download initiated for:", video.filename);
+            } catch (error) {
+                console.error("Failed to start download:", error);
+                $downloadingVideos.delete(video.id);
+                $downloadingVideos = $downloadingVideos;
+            }
+        }
     }
 
     async function setUsername() {
@@ -416,23 +572,37 @@
                     );
                 } else {
                     // Need to download first
-                    console.log("Video not found locally, starting download...");
-                    
+                    console.log(
+                        "Video not found locally, starting download...",
+                    );
+
+                    // Check if storage path is configured
+                    if (!videoStoragePath) {
+                        console.error("Video storage path not configured!");
+                        // You could show a toast/alert here
+                        return;
+                    }
+
                     // Add to downloading set
                     $downloadingVideos = $downloadingVideos.add(videoId);
-                    
+
                     // Add to pending playback so we know to start MPV when download completes
                     pendingPlayback.add(videoId);
                     pendingPlayback = pendingPlayback;
-                    
+
                     // Start download (returns immediately, download happens in background)
                     await invoke("download_video_to_storage", {
                         videoId,
                         filename,
                     });
 
-                    console.log("Download initiated, will start playback when complete");
-                    
+                    console.log(
+                        "Download initiated, will start playback when complete",
+                    );
+
+                    // Update ready status
+                    await updateReadyStatusForCurrentVideo();
+
                     // Exit - download progress listener will start MPV when ready
                     return;
                 }
@@ -440,19 +610,32 @@
 
             // Video is downloaded, verify it exists before starting MPV
             console.log("Attempting to start MPV with:", localPath);
-            
+
             // Double-check the file exists
             const exists = await invoke("check_video_downloaded", {
                 filename,
             });
-            
+
             if (!exists) {
-                throw new Error(`File not found at expected location: ${localPath}`);
+                throw new Error(
+                    `File not found at expected location: ${localPath}`,
+                );
             }
-            
+
+            // Check if MPV binary is configured
+            if (!mpvBinaryPath) {
+                console.error("MPV binary path not configured!");
+                // You could show a toast/alert here
+                return;
+            }
+
             // Start MPV with local file
             await invoke("start_mpv", { videoPath: localPath });
+            currentlyPlayingVideoId = videoId;
             console.log("MPV started successfully");
+
+            // Update ready status
+            await updateReadyStatusForCurrentVideo();
         } catch (error) {
             console.error("Failed to start video:", error);
             // Remove from downloading on error
@@ -462,7 +645,8 @@
             pendingPlayback.delete(videoId);
             pendingPlayback = pendingPlayback;
             // Clear download progress
-            $downloadProgress.delete(videoId);
+            const key = `${$clientInfo.client_id}-${videoId}`;
+            $downloadProgress.delete(key);
             $downloadProgress = $downloadProgress;
         }
     }
@@ -503,6 +687,8 @@
             if (path) {
                 videoStoragePath = path;
                 await saveConfig();
+                // Re-check downloaded videos with new path
+                await checkDownloadedVideos();
             }
         } catch (error) {
             console.error("Failed to select folder:", error);
@@ -582,21 +768,47 @@
     function getUserDisplayName(user: any, index: number): string {
         return user.username || `User ${index + 1}`;
     }
-    
+
     // Helper to get download progress for a specific user
     function getUserDownloadProgress(userId: string) {
         // Find any active downloads for this user
         for (const [key, progress] of $downloadProgress.entries()) {
             // Key format is "client_id-video_id"
-            if (key.startsWith(userId + "-") && progress.progress > 0 && progress.progress < 100) {
+            if (
+                key.startsWith(userId + "-") &&
+                progress.progress > 0 &&
+                progress.progress < 100
+            ) {
                 return {
                     progress: progress.progress,
                     speed: progress.speed_display,
                 };
             }
         }
-        
+
         return { progress: 0, speed: "" };
+    }
+
+    // Helper to get download progress for a specific video (for current user)
+    function getVideoDownloadProgress(videoId: string): number {
+        // First check with composite key (for local downloads)
+        const localKey = `${$clientInfo.client_id}-${videoId}`;
+        const localProgress = $downloadProgress.get(localKey);
+        if (localProgress && localProgress.progress > 0) {
+            return localProgress.progress;
+        }
+
+        // Also check for any progress matching this video for current user
+        for (const [key, progress] of $downloadProgress.entries()) {
+            if (
+                key.endsWith(`-${videoId}`) &&
+                key.startsWith($clientInfo.client_id || "")
+            ) {
+                return progress.progress;
+            }
+        }
+
+        return 0;
     }
 </script>
 
@@ -632,7 +844,7 @@
                 {/each}
             </div>
         </div>
-        
+
         <HostControls isOwner={$clientInfo.is_owner} />
 
         <button class="disconnect-btn" onclick={disconnect}>Disconnect</button>
@@ -652,6 +864,7 @@
                 <input
                     placeholder="Video storage location"
                     bind:value={videoStoragePath}
+                    class:error={!videoStoragePath}
                 />
                 <button onclick={browseVideoPath}>Browse</button>
             </div>
@@ -659,9 +872,15 @@
                 <input
                     placeholder="mpv binary location"
                     bind:value={mpvBinaryPath}
+                    class:error={!mpvBinaryPath}
                 />
                 <button onclick={browseMpvBinary}>Browse</button>
             </div>
+            {#if !videoStoragePath || !mpvBinaryPath}
+                <div class="config-warning">
+                    ⚠️ Please configure both paths to play videos
+                </div>
+            {/if}
         </div>
 
         <div class="section log-box">
@@ -687,7 +906,7 @@
             <h3>Playlist</h3>
             <div class="playlist-content">
                 {#each $playlist as video, index (video.id)}
-                    {@const activeDownload = $downloadProgress.get(video.id)}
+                    {@const videoProgress = getVideoDownloadProgress(video.id)}
                     <PlaylistItem
                         videoId={video.id}
                         filename={video.filename}
@@ -695,7 +914,7 @@
                         isCurrent={index === $currentVideoIndex}
                         isDownloaded={$downloadedVideos.has(video.id)}
                         isDownloading={$downloadingVideos.has(video.id)}
-                        downloadProgress={activeDownload?.progress || 0}
+                        downloadProgress={videoProgress}
                         on:play={() =>
                             handlePlaylistClick(video.id, video.filename)}
                     />
@@ -847,6 +1066,21 @@
         color: var(--text-primary);
         background-color: var(--bg-tertiary);
         transition: all 0.2s;
+    }
+
+    input.error {
+        border-color: var(--accent-red);
+        background-color: rgba(244, 67, 54, 0.1);
+    }
+
+    .config-warning {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        font-size: 0.75rem;
+        color: var(--accent-orange);
+        background-color: rgba(255, 152, 0, 0.1);
+        border-radius: 4px;
+        text-align: center;
     }
 
     button {
