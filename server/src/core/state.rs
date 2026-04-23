@@ -12,11 +12,11 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Self {
-        Self {
-            provider: Arc::new(ServiceProvider::new()),
+    pub async fn new() -> Result<Self, crate::Error> {
+        Ok(Self {
+            provider: Arc::new(ServiceProvider::new().await?),
             connections: Arc::new(RwLock::new(HashMap::new())),
-        }
+        })
     }
 
     pub fn services(&self) -> &Arc<ServiceProvider> {

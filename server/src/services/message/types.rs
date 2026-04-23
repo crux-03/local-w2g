@@ -25,4 +25,10 @@ pub enum WidgetState {
         bytes_done: u64,
         bytes_total: u64,
     },
+    Download {
+        reporter: Snowflake,
+        filename: String,
+        bytes_done: u64,
+        bytes_total: u64,
+    },
 }

@@ -4,8 +4,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 mod service;
+mod types;
 
 pub use service::VideoService;
+pub use types::PartialFileGuard;
 
 use crate::Snowflake;
 
@@ -227,7 +229,8 @@ impl Index {
     pub fn get(&self, id: Snowflake) -> Option<&VideoEntry> {
         self.entries.get(&id)
     }
-
+    
+    #[allow(dead_code)]
     pub fn get_mut(&mut self, id: Snowflake) -> Option<&mut VideoEntry> {
         self.entries.get_mut(&id)
     }

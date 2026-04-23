@@ -54,6 +54,7 @@ async fn handle_ws_connection(socket: WebSocket, state: Arc<AppState>) {
         // Clean up on disconnect
 
         state_clone.services().user().remove_user(&user.id).await;
+        state.services().state().remove_user(user.id).await;
         state_clone.remove_connection(&user.id).await;
     });
 

@@ -1,8 +1,13 @@
+use anyhow::Ok;
+
 use crate::{
     commands::{
         Command,
+        download::{DownloadDoneCommand, DownloadProgressCommand},
         messages::SendMessageCommand,
+        playback::{PlayCommand, SelectVideoCommand},
         resync::{InitiateResyncCommand, SendResyncReportCommand},
+        state::{AssertReadyCommand, ConfirmReadyForPlayCommand, HeartbeatCommand},
     },
     websocket::ClientMessage,
 };
@@ -20,5 +25,28 @@ pub fn parse_client_message(msg: &str) -> anyhow::Result<Box<dyn Command>> {
             state_id,
             timestamp,
         })),
+        ClientMessage::DownloadProgress {
+            widget_id,
+            bytes_done,
+        } => Ok(Box::new(DownloadProgressCommand {
+            widget_id,
+            bytes_done,
+        })),
+        ClientMessage::DownloadDone { widget_id } => {
+            Ok(Box::new(DownloadDoneCommand { widget_id }))
+        }
+        ClientMessage::AssertReady {
+            video_id,
+            on_device,
+        } => Ok(Box::new(AssertReadyCommand {
+            video_id,
+            on_device,
+        })),
+        ClientMessage::Heartbeat => Ok(Box::new(HeartbeatCommand)),
+        ClientMessage::ConfirmReadyForPlay { request_id } => {
+            Ok(Box::new(ConfirmReadyForPlayCommand { request_id }))
+        }
+        ClientMessage::Play => Ok(Box::new(PlayCommand)),
+        ClientMessage::SelectVideo { video_id } => Ok(Box::new(SelectVideoCommand { video_id })),
     }
 }

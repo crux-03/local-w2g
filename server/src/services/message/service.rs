@@ -24,6 +24,15 @@ impl MessageService {
         }
     }
 
+    pub async fn get(&self, id: Snowflake) -> Option<Entry> {
+        self.messages
+            .read()
+            .await
+            .iter()
+            .find(|e| e.id == id)
+            .cloned()
+    }
+
     async fn append(&self, kind: EntryKind) -> Entry {
         let entry = Entry {
             id: self.snowflake_service.generate(),

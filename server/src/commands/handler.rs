@@ -34,7 +34,7 @@ pub async fn execute_command(
     Ok(())
 }
 
-async fn apply_effect(state: &AppState, effect: Effect) -> Result<(), crate::Error> {
+pub async fn apply_effect(state: &AppState, effect: Effect) -> Result<(), crate::Error> {
     match effect {
         Effect::Global(msg) => {
             state.broadcast(serde_json::to_string(&msg)?.into()).await;

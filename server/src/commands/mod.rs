@@ -1,6 +1,9 @@
+pub mod download;
 pub mod handler;
 pub mod messages;
+pub mod playback;
 pub mod resync;
+pub mod state;
 
 use std::sync::Arc;
 

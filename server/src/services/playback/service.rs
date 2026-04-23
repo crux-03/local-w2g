@@ -11,6 +11,7 @@ use crate::{
 };
 
 pub struct PlaybackService {
+    current_video: RwLock<Option<Snowflake>>,
     resync_states: RwLock<Vec<ResyncState>>,
     snowflake_service: Arc<SnowflakeService>,
 }
@@ -18,6 +19,7 @@ pub struct PlaybackService {
 impl PlaybackService {
     pub fn new(snowflake_service: Arc<SnowflakeService>) -> Self {
         Self {
+            current_video: RwLock::new(None),
             resync_states: RwLock::new(Vec::new()),
             snowflake_service,
         }
@@ -70,5 +72,13 @@ impl PlaybackService {
             id: state.id,
             timestamp,
         })
+    }
+
+    pub async fn select(&self, video_id: Snowflake) {
+        *self.current_video.write().await = Some(video_id);
+    }
+
+    pub async fn current(&self) -> Option<Snowflake> {
+        *self.current_video.read().await
     }
 }

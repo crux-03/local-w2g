@@ -4,3 +4,4 @@ pub mod playback;
 pub mod snowflake;
 pub mod user;
 pub mod videos;
+pub mod state;

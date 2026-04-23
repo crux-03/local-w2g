@@ -26,5 +26,10 @@ pub enum Error {
     InvalidResyncState(Snowflake),
     #[error("Tried to retrieve the minimum resync timestamp, but none were found.")]
     NoResyncTimestamps,
-    
+    #[error("Recieved an invalid path")]
+    InvalidPath,
+    #[error("This operation is forbidden: {0}")]
+    Forbidden(String),
+    #[error("Can't playing with no video select")]
+    NoVideoSelected,
 }

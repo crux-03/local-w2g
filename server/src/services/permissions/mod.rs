@@ -12,6 +12,7 @@ bitflags! {
         const SEND_MESSAGE = 1 << 1;
         const MANAGE_USERS = 1 << 2;
         const SEND_STATE = 1 << 3;
+        const MANAGE_PLAYLIST = 1 << 4;
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, thread, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{Router, routing::get};
 use tower_http::cors::{Any, CorsLayer};
@@ -7,6 +7,7 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 mod commands;
 mod core;
 mod error;
+mod routes;
 mod services;
 mod types;
 mod websocket;
@@ -15,9 +16,14 @@ pub use error::Error;
 pub use types::*;
 
 use crate::{
-    commands::{handler::execute_command, messages::UpdateWidgetCommand},
+    commands::{
+        Effect,
+        handler::{apply_effect, execute_command},
+        messages::UpdateWidgetCommand,
+    },
     core::AppState,
     services::message::{EntryKind, WidgetState},
+    websocket::ServerMessage,
 };
 
 async fn start_widget_demo(state: Arc<AppState>) -> anyhow::Result<()> {
@@ -60,6 +66,7 @@ async fn start_widget_demo(state: Arc<AppState>) -> anyhow::Result<()> {
                 *bytes_done = (*bytes_done + CHUNK).min(*bytes_total);
                 *bytes_done >= *bytes_total
             }
+            _ => continue,
         };
 
         let command = UpdateWidgetCommand {
@@ -84,7 +91,26 @@ async fn main() -> anyhow::Result<()> {
         .with(EnvFilter::new("DEBUG"))
         .init();
 
-    let app_state = Arc::new(AppState::new());
+    let app_state = Arc::new(AppState::new().await?);
+
+    let sweep_state = Arc::clone(&app_state);
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            ticker.tick().await;
+            let stale = sweep_state.services().state().sweep_stale().await;
+            for user_id in stale {
+                let view = sweep_state.services().state().view_for(user_id).await;
+                let _ = apply_effect(
+                    &sweep_state,
+                    Effect::Global(ServerMessage::ReadinessUpdated {
+                        readiness: view,
+                    }),
+                )
+                .await;
+            }
+        }
+    });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -99,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
         .merge(ws_router)
+        .nest("/api/v1", routes::api(Arc::clone(&app_state)))
         .layer(cors);
 
     tokio::spawn(async move { start_widget_demo(Arc::clone(&app_state)).await });

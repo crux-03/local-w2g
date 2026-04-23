@@ -7,11 +7,12 @@ use crate::{
     Snowflake,
     services::{
         snowflake::SnowflakeService,
-        videos::{Index, VideoEntry, parse_snowflake_stem},
+        videos::{Index, VIDEO_EXTENSIONS, VideoEntry, parse_snowflake_stem},
     },
 };
 
 pub struct VideoService {
+    dir: PathBuf,
     index: RwLock<Index>,
     snowflake_service: Arc<SnowflakeService>,
 }
@@ -24,14 +25,16 @@ impl VideoService {
         // Permissive validator: accept every video file. If the filename
         // already stems to a snowflake, preserve it (no rename needed).
         // Otherwise mint a fresh id; `load` will rename the file on disk.
+        let videos_dir = videos_dir.into();
         let sf = snowflake_service.clone();
-        let index = Index::load(videos_dir, move |path| {
+        let index = Index::load(&videos_dir, move |path| {
             Some(parse_snowflake_stem(path).unwrap_or_else(|| sf.generate().into()))
         })
         .await
         .map_err(|e| crate::Error::Internal(e.to_string()))?;
 
         Ok(Self {
+            dir: videos_dir,
             index: RwLock::new(index),
             snowflake_service,
         })
@@ -116,6 +119,57 @@ impl VideoService {
             .await
             .map_err(|e| crate::Error::Internal(e.to_string()))?;
         Ok(sorted_playlist(&index))
+    }
+
+    /// Generate an id and compute the final on-disk path. Does not touch
+    /// the filesystem or index — call `register` once the file is in place.
+    pub fn reserve(&self, ext: &str) -> (Snowflake, PathBuf) {
+        let id = self.snowflake_service.generate();
+        let path = self.dir.join(format!("{id}.{ext}"));
+        (id, path)
+    }
+
+    /// Register a file that's already been written to `{id}.{ext}` and
+    /// persist the index.
+    pub async fn register(&self, id: Snowflake, display_name: String) -> std::io::Result<()> {
+        let mut index = self.index.write().await;
+        index.insert(
+            VideoEntry {
+                id,
+                display_name,
+                audio_track: 0,
+                subtitle_track: 0,
+                order: 0,
+            },
+            None,
+        );
+        index.save().await
+    }
+
+    /// Resolve the on-disk path by trying each known extension. `None` if
+    /// the entry isn't in the index or no matching file exists.
+    pub async fn resolve_path(&self, id: Snowflake) -> Option<PathBuf> {
+        self.index.read().await.get(id)?;
+        for ext in VIDEO_EXTENSIONS {
+            let candidate = self.dir.join(format!("{id}.{ext}"));
+            if tokio::fs::try_exists(&candidate).await.unwrap_or(false) {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    pub async fn display_name(&self, id: Snowflake) -> Option<String> {
+        self.index
+            .read()
+            .await
+            .get(id)
+            .map(|e| e.display_name.clone())
+    }
+
+    pub async fn list_ids(&self) -> Vec<Snowflake> {
+        let index = self.index.read().await;
+        index.iter().map(|e| e.id).collect()
     }
 }
 
