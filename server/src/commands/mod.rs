@@ -1,5 +1,6 @@
 pub mod handler;
 pub mod messages;
+pub mod resync;
 
 use std::sync::Arc;
 
@@ -25,14 +26,6 @@ pub trait Command: Send {
     }
 
     fn broadcast_scope(&self) -> BroadcastScope;
-
-    fn should_audit_log(&self) -> bool {
-        false
-    }
-
-    fn audit_action(&self) -> String {
-        "performed an action".to_string()
-    }
 }
 
 pub enum CommandResult {

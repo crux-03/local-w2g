@@ -22,5 +22,9 @@ pub enum Error {
     Serialization(#[from] serde_json::Error),
     #[error("Video does not exist: {0}")]
     InvalidVideo(Snowflake),
+    #[error("Resync state is invalid. It may have expired. ({0})")]
+    InvalidResyncState(Snowflake),
+    #[error("Tried to retrieve the minimum resync timestamp, but none were found.")]
+    NoResyncTimestamps,
     
 }

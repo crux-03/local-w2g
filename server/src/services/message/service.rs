@@ -12,7 +12,6 @@ use crate::{
 };
 
 pub struct MessageService {
-    capacity: usize,
     messages: Arc<RwLock<VecDeque<Entry>>>,
     snowflake_service: Arc<SnowflakeService>,
 }
@@ -20,7 +19,6 @@ pub struct MessageService {
 impl MessageService {
     pub fn new(capacity: usize, snowflake_service: Arc<SnowflakeService>) -> Self {
         Self {
-            capacity,
             messages: Arc::new(RwLock::new(VecDeque::with_capacity(capacity))),
             snowflake_service,
         }

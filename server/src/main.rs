@@ -2,7 +2,7 @@ use std::{net::SocketAddr, sync::Arc, thread, time::Duration};
 
 use axum::{Router, routing::get};
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod commands;
 mod core;
@@ -41,7 +41,7 @@ async fn start_widget_demo(state: Arc<AppState>) -> anyhow::Result<()> {
     let initial_command = UpdateWidgetCommand {
         msg_id: widget.id,
         state: widget_state.clone(),
-        finished: false
+        finished: false,
     };
 
     execute_command(Box::new(initial_command), Snowflake(0), Arc::clone(&state)).await?;
@@ -65,7 +65,7 @@ async fn start_widget_demo(state: Arc<AppState>) -> anyhow::Result<()> {
         let command = UpdateWidgetCommand {
             msg_id: widget.id,
             state: widget_state.clone(),
-            finished
+            finished,
         };
         execute_command(Box::new(command), Snowflake(0), Arc::clone(&state)).await?;
 
@@ -79,7 +79,10 @@ async fn start_widget_demo(state: Arc<AppState>) -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::registry().with(fmt::layer()).init();
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::new("DEBUG"))
+        .init();
 
     let app_state = Arc::new(AppState::new());
 

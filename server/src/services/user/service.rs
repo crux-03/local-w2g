@@ -40,7 +40,7 @@ impl UserService {
         let user = users.entry(new_user.id).or_insert(new_user).clone();
         user
     }
-    
+
     pub async fn get_user(&self, id: &Snowflake) -> Option<User> {
         let users = self.users.read().await;
         users.get(id).cloned()
@@ -65,5 +65,10 @@ impl UserService {
                 }
             }
         }
+    }
+
+    pub async fn get_users(&self) -> Vec<User> {
+        let users = self.users.read().await;
+        users.values().cloned().collect()
     }
 }
