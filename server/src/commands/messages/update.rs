@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     Snowflake,
-    commands::{BroadcastScope, Command, CommandResult},
+    commands::{Command, CommandResult},
     core::AppState,
     services::{message::WidgetState, permissions::Permissions},
     websocket::ServerMessage,
@@ -30,18 +30,18 @@ impl Command for UpdateWidgetCommand {
                     .finish_widget(self.msg_id, self.state.clone())
                     .await?;
 
-                Ok(CommandResult::Broadcast(ServerMessage::WidgetDone {
+                Ok(ServerMessage::WidgetDone {
                     entry,
-                }))
+                }.into())
             }
             false => {
                 let entry = message_service
                     .update_widget(self.msg_id, self.state.clone())
                     .await?;
 
-                Ok(CommandResult::Broadcast(ServerMessage::WidgetUpdated {
+                Ok(ServerMessage::WidgetUpdated {
                     entry,
-                }))
+                }.into())
             }
         }
     }
@@ -52,9 +52,5 @@ impl Command for UpdateWidgetCommand {
 
     fn required_permission(&self) -> Option<Permissions> {
         None
-    }
-
-    fn broadcast_scope(&self) -> BroadcastScope {
-        BroadcastScope::Global
     }
 }

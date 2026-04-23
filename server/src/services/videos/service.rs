@@ -6,8 +6,8 @@ use tokio::sync::RwLock;
 use crate::{
     Snowflake,
     services::{
-        videos::{Index, VideoEntry, parse_snowflake_stem},
         snowflake::SnowflakeService,
+        videos::{Index, VideoEntry, parse_snowflake_stem},
     },
 };
 
@@ -17,7 +17,7 @@ pub struct VideoService {
 }
 
 impl VideoService {
-    pub fn new(
+    pub async fn new(
         videos_dir: impl Into<PathBuf>,
         snowflake_service: Arc<SnowflakeService>,
     ) -> Result<Self, crate::Error> {
@@ -28,6 +28,7 @@ impl VideoService {
         let index = Index::load(videos_dir, move |path| {
             Some(parse_snowflake_stem(path).unwrap_or_else(|| sf.generate().into()))
         })
+        .await
         .map_err(|e| crate::Error::Internal(e.to_string()))?;
 
         Ok(Self {
@@ -52,6 +53,7 @@ impl VideoService {
         let updated = entry.clone();
         index
             .save()
+            .await
             .map_err(|e| crate::Error::Internal(e.to_string()))?;
         Ok(updated)
     }
@@ -67,6 +69,7 @@ impl VideoService {
         let updated = entry.clone();
         index
             .save()
+            .await
             .map_err(|e| crate::Error::Internal(e.to_string()))?;
         Ok(updated)
     }
@@ -82,6 +85,7 @@ impl VideoService {
         let updated = entry.clone();
         index
             .save()
+            .await
             .map_err(|e| crate::Error::Internal(e.to_string()))?;
         Ok(updated)
     }
@@ -109,6 +113,7 @@ impl VideoService {
 
         index
             .save()
+            .await
             .map_err(|e| crate::Error::Internal(e.to_string()))?;
         Ok(sorted_playlist(&index))
     }

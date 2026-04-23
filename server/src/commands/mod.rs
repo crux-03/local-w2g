@@ -24,19 +24,21 @@ pub trait Command: Send {
     fn required_permission(&self) -> Option<Permissions> {
         None
     }
+}
 
-    fn broadcast_scope(&self) -> BroadcastScope;
+pub enum Effect {
+    Global(ServerMessage),
+    Others(Snowflake, ServerMessage),
+    Direct(Snowflake, ServerMessage),
 }
 
 pub enum CommandResult {
-    Broadcast(ServerMessage),
-    SendToClient(ServerMessage),
+    Effects(Vec<Effect>),
     Silent,
 }
 
-pub enum BroadcastScope {
-    Global,
-    Others(Snowflake),
-    Direct(Snowflake),
-    Silent,
+impl From<ServerMessage> for CommandResult {
+    fn from(msg: ServerMessage) -> Self {
+        CommandResult::Effects(vec![Effect::Global(msg)])
+    }
 }

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -75,7 +74,7 @@ impl Index {
     /// Returns `AlreadyExists` if `validate` assigns an id that's already
     /// in use (either in the carrier, or assigned earlier in the same
     /// run), or if the target rename path already exists on disk.
-    pub fn load<F>(dir: impl Into<PathBuf>, mut validate: F) -> io::Result<Self>
+    pub async fn load<F>(dir: impl Into<PathBuf>, mut validate: F) -> io::Result<Self>
     where
         F: FnMut(&Path) -> Option<Snowflake>,
     {
@@ -83,7 +82,7 @@ impl Index {
         let index_path = dir.join(INDEX_FILENAME);
 
         // Parse carrier (or start empty).
-        let mut entries: HashMap<Snowflake, VideoEntry> = match fs::read(&index_path) {
+        let mut entries: HashMap<Snowflake, VideoEntry> = match tokio::fs::read(&index_path).await {
             Ok(bytes) => {
                 let list: Vec<VideoEntry> = serde_json::from_slice(&bytes)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -93,15 +92,13 @@ impl Index {
             Err(e) => return Err(e),
         };
 
-        // Phase 1: scan dir. For each video file:
-        //   - if its filename stem is a tracked snowflake, mark the entry kept.
-        //   - otherwise consult `validate` for an id; on Some, rename + add.
+        // Phase 1: scan dir.
         let mut kept_ids: HashSet<Snowflake> = HashSet::new();
         let mut new_ids: Vec<Snowflake> = Vec::new();
 
-        for dir_entry in fs::read_dir(&dir)? {
-            let dir_entry = dir_entry?;
-            if !dir_entry.file_type()?.is_file() {
+        let mut read_dir = tokio::fs::read_dir(&dir).await?;
+        while let Some(dir_entry) = read_dir.next_entry().await? {
+            if !dir_entry.file_type().await?.is_file() {
                 continue;
             }
             let path = dir_entry.path();
@@ -110,7 +107,6 @@ impl Index {
                 None => continue,
             };
 
-            // Already tracked by the carrier?
             if let Some(id) = parse_snowflake_stem(&path) {
                 if entries.contains_key(&id) {
                     kept_ids.insert(id);
@@ -118,13 +114,11 @@ impl Index {
                 }
             }
 
-            // Untracked: ask the caller.
             let id = match validate(&path) {
                 Some(id) => id,
                 None => continue,
             };
 
-            // The assigned id must not clash with anything we already know.
             if entries.contains_key(&id) || kept_ids.contains(&id) {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
@@ -132,16 +126,15 @@ impl Index {
                 ));
             }
 
-            // Rename to canonical {id}.{ext} if the file isn't already there.
             let target = dir.join(format!("{}.{}", id, ext));
             if path != target {
-                if target.exists() {
+                if tokio::fs::try_exists(&target).await? {
                     return Err(io::Error::new(
                         io::ErrorKind::AlreadyExists,
                         format!("cannot rename {:?}: {:?} already exists", path, target),
                     ));
                 }
-                fs::rename(&path, &target)?;
+                tokio::fs::rename(&path, &target).await?;
             }
 
             entries.insert(id, VideoEntry::from_discovered(id));
@@ -152,10 +145,7 @@ impl Index {
         // Phase 2: drop carrier entries whose file vanished.
         entries.retain(|id, _| kept_ids.contains(id));
 
-        // Phase 3: compact orders.
-        //   Survivors (pre-existing carrier entries that are still on disk):
-        //     sort by (order, id), renumber 0..m.
-        //   Newly-added ids: appended in discovery order at m..n.
+        // Phase 3: compact orders. (Unchanged — no I/O.)
         let new_set: HashSet<Snowflake> = new_ids.iter().copied().collect();
 
         let mut survivors: Vec<VideoEntry> = Vec::new();
@@ -187,7 +177,7 @@ impl Index {
 
     /// Write the current state to `{dir}/.index` atomically via write-then-rename.
     /// Entries are serialized in `order` sequence.
-    pub fn save(&self) -> io::Result<()> {
+    pub async fn save(&self) -> io::Result<()> {
         let mut list: Vec<&VideoEntry> = self.entries.values().collect();
         list.sort_by_key(|e| (e.order, e.id));
 
@@ -196,8 +186,8 @@ impl Index {
 
         let final_path = self.dir.join(INDEX_FILENAME);
         let tmp_path = self.dir.join(format!("{}.tmp", INDEX_FILENAME));
-        fs::write(&tmp_path, json)?;
-        fs::rename(tmp_path, final_path)?;
+        tokio::fs::write(&tmp_path, json).await?;
+        tokio::fs::rename(tmp_path, final_path).await?;
         Ok(())
     }
 

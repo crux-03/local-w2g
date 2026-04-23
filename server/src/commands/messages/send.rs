@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::Snowflake;
 use async_trait::async_trait;
 
-use crate::commands::BroadcastScope;
 use crate::{
     commands::{Command, CommandResult},
     core::AppState,
@@ -27,9 +26,7 @@ impl Command for SendMessageCommand {
             .message()
             .user_message(user_id, self.content.clone())
             .await;
-        Ok(CommandResult::Broadcast(ServerMessage::MessageCreated {
-            entry,
-        }))
+        Ok(ServerMessage::MessageCreated { entry }.into())
     }
 
     fn validate(&self) -> Result<(), crate::Error> {
@@ -44,9 +41,5 @@ impl Command for SendMessageCommand {
 
     fn required_permission(&self) -> Option<Permissions> {
         Some(Permissions::SEND_MESSAGE)
-    }
-
-    fn broadcast_scope(&self) -> BroadcastScope {
-        BroadcastScope::Global
     }
 }

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     Snowflake,
-    commands::{BroadcastScope, Command, CommandResult},
+    commands::{Command, CommandResult},
     core::AppState,
     services::permissions::Permissions,
     websocket::ServerMessage,
@@ -22,7 +22,6 @@ impl Command for SendResyncReportCommand {
         state: Arc<AppState>,
         user_id: Snowflake,
     ) -> Result<CommandResult, crate::Error> {
-        tracing::info!("Entered command");
         let completed = state
             .services()
             .playback()
@@ -30,15 +29,14 @@ impl Command for SendResyncReportCommand {
             .await?;
 
         if completed {
-            tracing::info!("State was completed");
             let collapsed = state
                 .services()
                 .playback()
                 .collapse_resync(self.state_id)
                 .await?;
-            return Ok(CommandResult::Broadcast(ServerMessage::CommitResync {
+            return Ok(ServerMessage::CommitResync {
                 timestamp: collapsed.timestamp,
-            }));
+            }.into());
         }
 
         Ok(CommandResult::Silent)
@@ -46,9 +44,5 @@ impl Command for SendResyncReportCommand {
 
     fn required_permission(&self) -> Option<Permissions> {
         Some(Permissions::SEND_STATE)
-    }
-
-    fn broadcast_scope(&self) -> BroadcastScope {
-        BroadcastScope::Global
     }
 }
