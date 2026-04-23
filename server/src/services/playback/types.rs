@@ -12,7 +12,7 @@ pub struct ResyncState {
 impl ResyncState {
     pub fn new(id: Snowflake, users: Vec<Snowflake>) -> Self {
         let timestamps: HashMap<Snowflake, Option<u32>> =
-            users.iter().map(|u| (u.clone(), None)).collect();
+            users.iter().map(|u| (*u, None)).collect();
         ResyncState {
             id,
             timestamps: Mutex::new(timestamps),

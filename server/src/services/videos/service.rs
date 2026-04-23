@@ -28,7 +28,7 @@ impl VideoService {
         let videos_dir = videos_dir.into();
         let sf = snowflake_service.clone();
         let index = Index::load(&videos_dir, move |path| {
-            Some(parse_snowflake_stem(path).unwrap_or_else(|| sf.generate().into()))
+            Some(parse_snowflake_stem(path).unwrap_or_else(|| sf.generate()))
         })
         .await
         .map_err(|e| crate::Error::Internal(e.to_string()))?;

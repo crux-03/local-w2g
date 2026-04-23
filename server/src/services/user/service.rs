@@ -37,8 +37,7 @@ impl UserService {
             *admin_lock = Some(new_user.id);
         }
 
-        let user = users.entry(new_user.id).or_insert(new_user).clone();
-        user
+        users.entry(new_user.id).or_insert(new_user).clone()
     }
 
     pub async fn get_user(&self, id: &Snowflake) -> Option<User> {
@@ -59,10 +58,10 @@ impl UserService {
             let new_admin_id = users.keys().min().copied();
             *admin_lock = new_admin_id;
 
-            if let Some(id) = new_admin_id {
-                if let Some(user) = users.get_mut(&id) {
-                    user.permissions = Permissions::admin();
-                }
+            if let Some(id) = new_admin_id
+                && let Some(user) = users.get_mut(&id)
+            {
+                user.permissions = Permissions::admin();
             }
         }
     }

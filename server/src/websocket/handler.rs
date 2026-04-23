@@ -31,22 +31,21 @@ async fn handle_ws_connection(socket: WebSocket, state: Arc<AppState>) {
     // Listen for incoming messages
     let state_clone = state.clone();
     tokio::spawn(async move {
-        while let Some(result) = receiver.next().await {
-            if let Ok(msg) = result {
-                if let Ok(text) = msg.into_text() {
-                    match parse_client_message(&text) {
-                        Ok(cmd) => {
-                            if let Err(e) = execute_command(cmd, user.id, state_clone.clone()).await
-                            {
-                                let err = json!(ServerMessage::Error {
-                                    message: e.to_string()
-                                });
-                                state.send_to_client(&user.id, err.to_string()).await;
-                            }
+        while let Some(result) = receiver.next().await
+            && let Ok(msg) = result
+        {
+            if let Ok(text) = msg.into_text() {
+                match parse_client_message(&text) {
+                    Ok(cmd) => {
+                        if let Err(e) = execute_command(cmd, user.id, state_clone.clone()).await {
+                            let err = json!(ServerMessage::Error {
+                                message: e.to_string()
+                            });
+                            state.send_to_client(&user.id, err.to_string()).await;
                         }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse command: {}", e);
-                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse command: {}", e);
                     }
                 }
             }

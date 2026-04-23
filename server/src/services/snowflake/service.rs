@@ -24,10 +24,7 @@ struct SnowflakeState {
 
 impl SnowflakeService {
     pub fn new(host_id: i64) -> Self {
-        assert!(
-            host_id >= 0 && host_id <= MAX_HOST_ID,
-            "host_id out of range"
-        );
+        assert!((0..=MAX_HOST_ID).contains(&host_id), "host_id out of range");
 
         Self {
             host_id,

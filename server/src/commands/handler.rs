@@ -37,16 +37,16 @@ pub async fn execute_command(
 pub async fn apply_effect(state: &AppState, effect: Effect) -> Result<(), crate::Error> {
     match effect {
         Effect::Global(msg) => {
-            state.broadcast(serde_json::to_string(&msg)?.into()).await;
+            state.broadcast(serde_json::to_string(&msg)?).await;
         }
         Effect::Others(except_id, msg) => {
             state
-                .broadcast_except(except_id, serde_json::to_string(&msg)?.into())
+                .broadcast_except(except_id, serde_json::to_string(&msg)?)
                 .await;
         }
         Effect::Direct(id, msg) => {
             state
-                .send_to_client(&id, serde_json::to_string(&msg)?.into())
+                .send_to_client(&id, serde_json::to_string(&msg)?)
                 .await;
         }
     }

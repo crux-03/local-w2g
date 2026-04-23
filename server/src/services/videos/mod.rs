@@ -109,11 +109,11 @@ impl Index {
                 None => continue,
             };
 
-            if let Some(id) = parse_snowflake_stem(&path) {
-                if entries.contains_key(&id) {
-                    kept_ids.insert(id);
-                    continue;
-                }
+            if let Some(id) = parse_snowflake_stem(&path)
+                && entries.contains_key(&id)
+            {
+                kept_ids.insert(id);
+                continue;
             }
 
             let id = match validate(&path) {
@@ -183,8 +183,7 @@ impl Index {
         let mut list: Vec<&VideoEntry> = self.entries.values().collect();
         list.sort_by_key(|e| (e.order, e.id));
 
-        let json = serde_json::to_vec_pretty(&list)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let json = serde_json::to_vec_pretty(&list).map_err(io::Error::other)?;
 
         let final_path = self.dir.join(INDEX_FILENAME);
         let tmp_path = self.dir.join(format!("{}.tmp", INDEX_FILENAME));
@@ -229,7 +228,7 @@ impl Index {
     pub fn get(&self, id: Snowflake) -> Option<&VideoEntry> {
         self.entries.get(&id)
     }
-    
+
     #[allow(dead_code)]
     pub fn get_mut(&mut self, id: Snowflake) -> Option<&mut VideoEntry> {
         self.entries.get_mut(&id)
