@@ -7,7 +7,7 @@ use crate::protocol::{Entry, Permissions, Snowflake, User, UserReadinessView, Vi
 pub enum ServerMessage {
     // Utility
     Pong,
-    
+
     // Users
     UserIdentity {
         id: Snowflake,
@@ -38,7 +38,7 @@ pub enum ServerMessage {
         id: Snowflake,
     },
     CommitResync {
-        timestamp: u32,
+        timestamp: f64,
     },
     // Ready-state
     ReadinessUpdated {
@@ -53,12 +53,16 @@ pub enum ServerMessage {
     // Playback
     Play {
         request_id: Snowflake,
+        #[serde(rename = "video_id")]
+        _video_id: Snowflake,
     },
     PlayAborted {
         request_id: Snowflake,
         non_confirmers: Vec<Snowflake>,
     },
-    
+    Pause,
+    Resume,
+
     // Playlist
     PlaylistUpdated {
         playlist: Vec<VideoEntry>,

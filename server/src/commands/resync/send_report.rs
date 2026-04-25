@@ -12,7 +12,7 @@ use crate::{
 
 pub struct SendResyncReportCommand {
     pub state_id: Snowflake,
-    pub timestamp: u32,
+    pub timestamp: f64,
 }
 
 #[async_trait]

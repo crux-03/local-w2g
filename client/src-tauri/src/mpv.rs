@@ -1,6 +1,8 @@
+use crate::protocol::Snowflake;
 use crate::CommandResult;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -9,6 +11,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
+use uuid::Uuid;
 
 #[cfg(not(target_os = "windows"))]
 use tokio::net::UnixStream;
@@ -44,7 +47,6 @@ pub enum Event {
 struct ConnectedState {
     writer: Arc<Mutex<WriteHalf<IpcStream>>>,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
-    events_tx: broadcast::Sender<Event>,
     next_id: Arc<AtomicU64>,
     reader_handle: JoinHandle<()>,
 }
@@ -60,11 +62,13 @@ pub struct MpvManager {
     process: Arc<Mutex<Option<Child>>>,
     socket_path: String,
     state: Arc<Mutex<Option<ConnectedState>>>,
+    pending_confirmation: Arc<Mutex<Option<Snowflake>>>,
+    events_tx: broadcast::Sender<Event>,
 }
 
 impl MpvManager {
-    pub fn new() -> Self {
-        Self::with_socket_name("mpv-socket")
+    pub fn new(id: Uuid) -> Self {
+        Self::with_socket_name(&format!("w2g-mpv-socket-{id}"))
     }
 
     pub fn with_socket_name(name: &str) -> Self {
@@ -77,10 +81,14 @@ impl MpvManager {
         #[cfg(target_os = "windows")]
         let socket_path = format!(r"\\.\pipe\{}", name);
 
+        let (events_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+
         Self {
             process: Arc::new(Mutex::new(None)),
             socket_path,
             state: Arc::new(Mutex::new(None)),
+            pending_confirmation: Arc::new(Mutex::new(None)),
+            events_tx,
         }
     }
 
@@ -127,19 +135,47 @@ impl MpvManager {
 
         let pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let (events_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
 
-        let reader_handle = tokio::spawn(reader_task(reader, pending.clone(), events_tx.clone()));
+        let reader_handle =
+            tokio::spawn(reader_task(reader, pending.clone(), self.events_tx.clone()));
 
         *self.state.lock().await = Some(ConnectedState {
             writer: Arc::new(Mutex::new(writer)),
             pending,
-            events_tx,
             next_id: Arc::new(AtomicU64::new(1)),
             reader_handle,
         });
 
         Ok(())
+    }
+
+    /// Load a file in mpv (starting it if necessary) and arm the bridge to
+    /// send `ConfirmReadyForPlay` once `FileLoaded` fires. The deadline is
+    /// informational — the server times us out independently.
+    pub async fn load_and_confirm(
+        &self,
+        request_id: Snowflake,
+        video_path: PathBuf,
+        mpv_binary: &str,
+        _deadline_ms: u64,
+    ) -> CommandResult<()> {
+        *self.pending_confirmation.lock().await = Some(request_id);
+
+        let path_str = video_path.to_string_lossy().into_owned();
+
+        if self.is_running().await {
+            self.send_command(vec![json!("loadfile"), json!(path_str), json!("replace")])
+                .await
+                .map(|_| ())
+        } else {
+            self.start(mpv_binary, &path_str).await
+        }
+    }
+
+    /// Take the pending request_id, leaving `None`. Called by the bridge on
+    /// `FileLoaded`; returns `None` if the load wasn't part of a handshake.
+    pub async fn take_pending_confirmation(&self) -> Option<Snowflake> {
+        self.pending_confirmation.lock().await.take()
     }
 
     pub async fn stop(&self) -> CommandResult<()> {
@@ -173,12 +209,8 @@ impl MpvManager {
 
     /// Subscribe to mpv events. Returns `Err` if not currently connected.
     /// Multiple subscribers are allowed; each gets its own receiver.
-    pub async fn subscribe_events(&self) -> CommandResult<broadcast::Receiver<Event>> {
-        let state = self.state.lock().await;
-        let state = state
-            .as_ref()
-            .ok_or_else(|| "Not connected to mpv".to_string())?;
-        Ok(state.events_tx.subscribe())
+    pub fn subscribe_events(&self) -> broadcast::Receiver<Event> {
+        self.events_tx.subscribe()
     }
 
     /// Send a command and await mpv's JSON response. Every mpv command produces

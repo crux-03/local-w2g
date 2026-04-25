@@ -12,6 +12,7 @@ pub struct UserReadiness {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum VideoReadiness {
     OnDevice,
+    Pending,
     NotStarted,
 }
 
@@ -32,6 +33,6 @@ pub struct UserReadinessView {
 
 pub enum HandshakeOutcome {
     Pending,
-    AllConfirmed,
+    AllConfirmed { video_id: Snowflake },
     AlreadyResolved,
 }

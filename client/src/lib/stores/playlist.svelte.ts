@@ -23,9 +23,18 @@ listen<UserReadinessView>("readiness_updated", async (event) => {
   console.error(`Failed to register playlist_updated listener: ${error}`);
 });
 
+listen<Snowflake>("video_selected", async (event) => {
+  selected = event.payload;
+}).catch((error) => {
+  console.error(`Failed to register video_selected listener: ${error}`);
+});
+
 export const playlistStore = {
   get entries() {
     return entries;
+  },
+  get selected() {
+    return selected;
   },
   async requestPlaylist() {
     try {
@@ -45,9 +54,22 @@ export const playlistStore = {
   async init() {
     try {
       await invoke("init_file_manager");
+      await invoke("init_mpv_manager");
     } catch (error) {
       console.log(`Error when initializing file manager: ${error}`);
     }
+  },
+  async selectVideo(id: Snowflake) {
+    try {
+      await invoke("select_video", {
+        videoId: id,
+      });
+    } catch (error) {
+      console.log(`Error when selecting video: ${error}`);
+    }
+  },
+  isSelected(id: Snowflake): boolean {
+    return selected === id;
   },
   fileOnDevice(id: Snowflake): boolean {
     return onDevice.includes(id);

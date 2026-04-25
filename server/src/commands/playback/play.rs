@@ -30,7 +30,7 @@ impl Command for PlayCommand {
         state
             .services()
             .state()
-            .begin_play_handshake(request_id)
+            .begin_play_handshake(request_id, video_id)
             .await;
 
         // Fire-and-forget timeout. Owns its own Arc; no join needed.

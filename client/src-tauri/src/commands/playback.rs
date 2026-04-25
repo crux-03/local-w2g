@@ -1,15 +1,33 @@
 use tauri::State;
 
+use crate::core::AppState;
 use crate::protocol::{ClientMessage, Snowflake};
-use crate::ws::WsHandle;
+use crate::CommandResult;
 
 #[tauri::command]
-pub async fn play(ws: State<'_, WsHandle>) -> Result<(), String> {
-    ws.send(ClientMessage::Play).map_err(|e| e.to_string())
+pub async fn init_mpv_manager(state: State<'_, AppState>) -> CommandResult<()> {
+    state
+        .init_mpv_manager()
+        .await
+        .inspect_err(|e| tracing::error!(%e, "init_mpv_manager command failed"))
 }
 
 #[tauri::command]
-pub async fn select_video(video_id: Snowflake, ws: State<'_, WsHandle>) -> Result<(), String> {
-    ws.send(ClientMessage::SelectVideo { video_id })
-        .map_err(|e| e.to_string())
+pub async fn play(state: State<'_, AppState>) -> Result<(), String> {
+    state.ws_send(ClientMessage::Play).await
+}
+
+#[tauri::command]
+pub async fn select_video(video_id: Snowflake, state: State<'_, AppState>) -> Result<(), String> {
+    state.ws_send(ClientMessage::SelectVideo { video_id }).await
+}
+
+#[tauri::command]
+pub async fn pause(state: State<'_, AppState>) -> Result<(), String> {
+    state.ws_send(ClientMessage::RequestPause).await
+}
+
+#[tauri::command]
+pub async fn resume(state: State<'_, AppState>) -> Result<(), String> {
+    state.ws_send(ClientMessage::RequestResume).await
 }

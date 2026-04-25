@@ -35,4 +35,6 @@ rfd = "0.17.2"
 bitflags = { version = "2.11.1", features = ["serde"] }
 reqwest = { version = "0.13.2", features = ["json"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.23.1", features = ["v4"] }
+futures = "0.3.32"
 

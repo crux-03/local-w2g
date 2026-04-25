@@ -28,6 +28,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 const PROGRESS_THROTTLE: Duration = Duration::from_millis(250);
 const PROGRESS_THROTTLE_PCT: u32 = 1;
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum FileEvent {
     /// Emitted once per download, immediately after the HTTP response

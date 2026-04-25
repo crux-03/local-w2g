@@ -10,6 +10,7 @@
     } from "$src/lib/api/types";
     import EntryRouter from "$src/lib/components/chat/EntryRouter.svelte";
     import PlaybackControls from "$src/lib/components/controls/PlaybackControls.svelte";
+    import Details from "$src/lib/components/Details.svelte";
     import PlaylistItem from "$src/lib/components/PlaylistItem.svelte";
     import UserItem from "$src/lib/components/UserItem.svelte";
     import { hasPermission } from "$src/lib/helpers/permission";
@@ -119,7 +120,7 @@
 
     <!-- MIDDLE: status + chat -->
     <section class="col">
-        <div class="status">Status placeholder</div>
+        <Details />
         <div class="chat">
             <div class="chat-messages">
                 {#each messageStore.messages as message (message.id)}
@@ -186,13 +187,6 @@
     }
 
     /* MIDDLE */
-    .status {
-        padding: var(--space-3) var(--space-4);
-        background: var(--color-surface);
-        border: var(--border-thin) solid var(--color-border);
-        border-radius: var(--radius-md);
-    }
-
     .chat {
         flex: 1;
         display: flex;

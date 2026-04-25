@@ -11,7 +11,7 @@ use crate::{
     services::{
         state::{HandshakeOutcome, UserReadiness, UserReadinessView, Verdict, VideoReadiness},
         user::UserService,
-        videos::VideoService
+        videos::VideoService,
     },
 };
 
@@ -22,6 +22,7 @@ pub const PLAY_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
 struct PendingPlay {
     required: HashSet<Snowflake>,
     confirmed: HashSet<Snowflake>,
+    video_id: Snowflake,
 }
 
 pub struct StateService {
@@ -73,6 +74,35 @@ impl StateService {
         Some(self.view_for(user_id).await)
     }
 
+    pub async fn assert_ready_bulk(
+        &self,
+        user_id: Snowflake,
+        on_device: Vec<Snowflake>,
+    ) -> UserReadinessView {
+        let indexed: Vec<Snowflake> = self.video_service.list_ids().await;
+        let on_device_set: HashSet<Snowflake> = on_device
+            .into_iter()
+            .filter(|id| indexed.contains(id))
+            .collect();
+
+        let mut states = self.ready_states.write().await;
+        let entry = states.entry(user_id).or_insert_with(|| UserReadiness {
+            videos: HashMap::new(),
+        });
+        entry.videos.clear();
+        for id in &indexed {
+            let status = if on_device_set.contains(id) {
+                VideoReadiness::OnDevice
+            } else {
+                VideoReadiness::NotStarted
+            };
+            entry.videos.insert(*id, status);
+        }
+        drop(states);
+
+        self.view_for(user_id).await
+    }
+
     pub async fn heartbeat(&self, user_id: Snowflake) {
         self.last_heartbeats
             .write()
@@ -92,10 +122,7 @@ impl StateService {
 
         let verdict = self.compute_verdict(&videos).await;
 
-        UserReadinessView {
-            videos,
-            verdict,
-        }
+        UserReadinessView { videos, verdict }
     }
 
     async fn compute_verdict(&self, videos: &HashMap<Snowflake, VideoReadiness>) -> Verdict {
@@ -153,7 +180,7 @@ impl StateService {
 
     /// Begin a handshake. Records which users need to confirm and returns
     /// the request id.
-    pub async fn begin_play_handshake(&self, request_id: Snowflake) {
+    pub async fn begin_play_handshake(&self, request_id: Snowflake, video_id: Snowflake) {
         let required: HashSet<Snowflake> = self
             .user_service
             .get_users()
@@ -166,6 +193,7 @@ impl StateService {
             PendingPlay {
                 required,
                 confirmed: HashSet::new(),
+                video_id,
             },
         );
     }
@@ -184,8 +212,9 @@ impl StateService {
         }
         play.confirmed.insert(user_id);
         if play.confirmed == play.required {
+            let video_id = play.video_id;
             plays.remove(&request_id);
-            HandshakeOutcome::AllConfirmed
+            HandshakeOutcome::AllConfirmed { video_id }
         } else {
             HandshakeOutcome::Pending
         }

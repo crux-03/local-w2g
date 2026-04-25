@@ -42,7 +42,7 @@ impl PlaybackService {
         &self,
         resync_id: Snowflake,
         user_id: Snowflake,
-        timestamp: u32,
+        timestamp: f64,
     ) -> Result<bool, crate::Error> {
         let mut resync_states = self.resync_states.write().await;
         let state = resync_states

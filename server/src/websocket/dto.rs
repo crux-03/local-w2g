@@ -44,7 +44,7 @@ pub enum ServerMessage {
         id: Snowflake,
     },
     CommitResync {
-        timestamp: u32,
+        timestamp: f64,
     },
     // Ready-state
     ReadinessUpdated {
@@ -59,11 +59,14 @@ pub enum ServerMessage {
     // Playback
     Play {
         request_id: Snowflake,
+        video_id: Snowflake,
     },
     PlayAborted {
         request_id: Snowflake,
         non_confirmers: Vec<Snowflake>,
     },
+    Pause,
+    Resume,
 
     // Playlist
     PlaylistUpdated {
@@ -100,7 +103,7 @@ pub enum ClientMessage {
     StartResync,
     SendResyncReport {
         state_id: Snowflake,
-        timestamp: u32,
+        timestamp: f64,
     },
 
     // Download
@@ -117,6 +120,9 @@ pub enum ClientMessage {
         video_id: Snowflake,
         on_device: bool,
     },
+    AssertReadyBulk {
+        on_device: Vec<Snowflake>,
+    },
     Heartbeat,
     ConfirmReadyForPlay {
         request_id: Snowflake,
@@ -124,6 +130,8 @@ pub enum ClientMessage {
 
     // Playback
     Play,
+    RequestPause,
+    RequestResume,
 
     // Playlist
     SelectVideo {

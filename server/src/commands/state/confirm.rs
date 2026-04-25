@@ -2,7 +2,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::{Snowflake, commands::{Command, CommandResult}, core::AppState, services::state::HandshakeOutcome, websocket::ServerMessage};
+use crate::{
+    Snowflake,
+    commands::{Command, CommandResult},
+    core::AppState,
+    services::state::HandshakeOutcome,
+    websocket::ServerMessage,
+};
 
 pub struct ConfirmReadyForPlayCommand {
     pub request_id: Snowflake,
@@ -21,8 +27,9 @@ impl Command for ConfirmReadyForPlayCommand {
             .confirm_play(self.request_id, user_id)
             .await
         {
-            HandshakeOutcome::AllConfirmed => Ok(ServerMessage::Play {
+            HandshakeOutcome::AllConfirmed { video_id } => Ok(ServerMessage::Play {
                 request_id: self.request_id,
+                video_id,
             }
             .into()),
             HandshakeOutcome::Pending | HandshakeOutcome::AlreadyResolved => {

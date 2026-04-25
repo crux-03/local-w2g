@@ -23,7 +23,7 @@ pub enum ClientMessage {
     StartResync,
     SendResyncReport {
         state_id: Snowflake,
-        timestamp: u32,
+        timestamp: f64,
     },
 
     // Download
@@ -40,6 +40,9 @@ pub enum ClientMessage {
         video_id: Snowflake,
         on_device: bool,
     },
+    AssertReadyBulk {
+        on_device: Vec<Snowflake>,
+    },
     Heartbeat,
     ConfirmReadyForPlay {
         request_id: Snowflake,
@@ -47,6 +50,8 @@ pub enum ClientMessage {
 
     // Playback
     Play,
+    RequestPause,
+    RequestResume,
 
     // Playlist
     SelectVideo {
