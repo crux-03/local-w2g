@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::error::{Error};
+use crate::error::Error;
 use crate::protocol::ClientMessage;
 
 use super::dispatcher;
@@ -31,6 +31,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 
 pub fn spawn(url: String, username: String, pw: String, app: AppHandle) -> WsHandle {
+    tracing::info!("entered spawn()");
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(run(url, username, pw, rx, app));
     WsHandle { tx }
@@ -43,6 +44,7 @@ async fn run(
     mut outgoing: mpsc::UnboundedReceiver<ClientMessage>,
     app: AppHandle,
 ) {
+    tracing::info!("Entered run()");
     let mut backoff = RECONNECT_MIN;
 
     loop {
@@ -87,6 +89,7 @@ fn build_request(
     let headers = req.headers_mut();
     headers.insert("X-Access-Key", HeaderValue::from_str(pw)?);
     headers.insert("X-Username", HeaderValue::from_str(username)?);
+    tracing::info!("Connection Headers: {:?}", headers);
     Ok(req)
 }
 
@@ -98,8 +101,10 @@ async fn handle_connection(
     outgoing: &mut mpsc::UnboundedReceiver<ClientMessage>,
     app: &AppHandle,
 ) -> crate::error::Result<()> {
+    tracing::info!("constructing websocket sinks");
     let (mut sink, mut stream) = ws.split();
 
+    tracing::info!("create heartbeat");
     let mut heartbeat = interval(HEARTBEAT_INTERVAL);
     heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
     heartbeat.tick().await; // consume the immediate first tick
