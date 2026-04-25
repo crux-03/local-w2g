@@ -6,10 +6,13 @@ use crate::CommandResult;
 
 #[tauri::command]
 pub async fn init_mpv_manager(state: State<'_, AppState>) -> CommandResult<()> {
+    tracing::info!("Initializing mpv manager");
     state
         .init_mpv_manager()
         .await
-        .inspect_err(|e| tracing::error!(%e, "init_mpv_manager command failed"))
+        .inspect_err(|e| tracing::error!(%e, "init_mpv_manager command failed"))?;
+    tracing::info!("Initialized mpv manager");
+    Ok(())
 }
 
 #[tauri::command]

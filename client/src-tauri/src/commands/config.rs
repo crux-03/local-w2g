@@ -4,6 +4,7 @@ use crate::{core::AppState, CommandResult};
 
 #[tauri::command]
 pub async fn load_username(app: AppHandle) -> String {
+    tracing::info!("Loading username");
     app.state::<AppState>()
         .config()
         .read()
@@ -14,6 +15,7 @@ pub async fn load_username(app: AppHandle) -> String {
 
 #[tauri::command]
 pub async fn load_server_url(app: AppHandle) -> String {
+    tracing::info!("Loading server url");
     app.state::<AppState>()
         .config()
         .read()
@@ -24,6 +26,7 @@ pub async fn load_server_url(app: AppHandle) -> String {
 
 #[tauri::command]
 pub async fn load_mpv_binary(app: AppHandle) -> String {
+    tracing::info!("loading mpv binary");
     app.state::<AppState>()
         .config()
         .read()
@@ -37,6 +40,7 @@ pub async fn load_mpv_binary(app: AppHandle) -> String {
 
 #[tauri::command]
 pub async fn load_videos_dir(app: AppHandle) -> String {
+    tracing::info!("Loading videos dir");
     app.state::<AppState>()
         .config()
         .read()

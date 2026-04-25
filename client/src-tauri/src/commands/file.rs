@@ -7,8 +7,10 @@ use crate::{core::AppState, protocol::Snowflake, CommandResult};
 
 #[tauri::command]
 pub async fn init_file_manager(state: State<'_, AppState>) -> CommandResult<()> {
+    tracing::info!("Initializing file manager");
     let videos_dir = state.config().read().await.videos_directory.clone();
     state.init_file_manager(videos_dir).await?;
+    tracing::info!("File manager initialized");
     Ok(())
 }
 
