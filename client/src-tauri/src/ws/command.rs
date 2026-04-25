@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
 use crate::core::AppState;
 
@@ -23,10 +23,8 @@ pub async fn connect(
     server_url: String,
     server_pw: String,
     app: AppHandle,
+    state: State<'_, AppState>,
 ) -> crate::CommandResult<()> {
-    tracing::info!("connect()");
-    let app_clone = app.clone();
-    let state = app.state::<AppState>();
     state
         .set_server_url(&app, server_url.clone())
         .await
@@ -37,7 +35,7 @@ pub async fn connect(
         .inspect_err(|e| tracing::error!(%e, "connection failed"))?;
 
     let ws_url = format_url(server_url);
-    let handle = super::spawn(ws_url, username, server_pw, app_clone);
+    let handle = super::spawn(ws_url, username, server_pw, app);
     state.set_ws_handle(handle).await;
 
     tracing::info!("WebSocket connected");

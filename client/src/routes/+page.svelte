@@ -21,6 +21,7 @@
 
     async function connectClick() {
         try {
+            console.log("connecting");
             await invoke("connect", {
                 username: username,
                 serverUrl: server_url,
