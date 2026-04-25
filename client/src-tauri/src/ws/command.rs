@@ -24,17 +24,24 @@ pub async fn connect(
     server_pw: String,
     app: AppHandle,
 ) -> crate::CommandResult<()> {
+    tracing::info!("connect()");
     let app_clone = app.clone();
     let state = app.state::<AppState>();
-    state.set_server_url(&app, server_url.clone()).await?;
-    state.set_username(&app, username.clone()).await?;
+    state
+        .set_server_url(&app, server_url.clone())
+        .await
+        .inspect_err(|e| tracing::error!(%e, "connection failed"))?;
+    state
+        .set_username(&app, username.clone())
+        .await
+        .inspect_err(|e| tracing::error!(%e, "connection failed"))?;
 
     let ws_url = format_url(server_url);
     let handle = super::spawn(ws_url, username, server_pw, app_clone);
     state.set_ws_handle(handle).await;
 
     tracing::info!("WebSocket connected");
-    
+
     state
         .ws_send(crate::protocol::ClientMessage::RequestIdentity)
         .await?;
