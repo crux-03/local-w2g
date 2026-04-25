@@ -4,25 +4,23 @@ use std::time::{Duration, Instant};
 
 use axum::{
     Json,
-    extract::{Multipart, Query, State},
-    http::{HeaderMap, StatusCode, header::CONTENT_LENGTH},
-    response::{IntoResponse, Response},
+    body::Body,
+    extract::{Query, State},
+    http::StatusCode,
 };
-use serde::Deserialize;
-use serde_json::json;
-use tokio::{fs::File, io::AsyncWriteExt};
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
+use tokio::fs::{File, OpenOptions};
+use tokio::io::AsyncWriteExt;
 
+use crate::Snowflake;
 use crate::commands::Effect;
 use crate::commands::handler::apply_effect;
+use crate::core::AppState;
+use crate::services::message::WidgetState;
 use crate::services::permissions::Permissions;
-use crate::services::videos::{PartialFileGuard, VIDEO_EXTENSIONS};
+use crate::services::videos::VIDEO_EXTENSIONS;
 use crate::websocket::ServerMessage;
-use crate::{Snowflake, core::AppState, services::message::WidgetState};
-
-#[derive(Deserialize)]
-pub struct UploadQuery {
-    client_id: Snowflake,
-}
 
 fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
     (
@@ -31,44 +29,67 @@ fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
     )
 }
 
-pub async fn upload_handler(
+/// Per-upload session. Lives in `AppState.upload_sessions` for the duration
+/// of a chunked upload. Cleaned up by the reaper or by finalize.
+pub struct UploadSession {
+    pub client_id: Snowflake,
+    pub filename: String,
+    pub part_path: PathBuf,
+    pub final_path: PathBuf,
+    pub bytes_received: u64,
+    pub bytes_expected: u64,
+    pub widget_id: Snowflake, // adjust to whatever type `widget.id` is
+    pub last_activity: Instant,
+}
+
+#[derive(Deserialize)]
+pub struct InitQuery {
+    client_id: Snowflake,
+}
+
+#[derive(Deserialize)]
+pub struct UploadInitBody {
+    filename: String,
+    total_size: u64,
+}
+
+#[derive(Serialize)]
+pub struct UploadInitResponse {
+    upload_id: Snowflake,
+}
+
+#[derive(Deserialize)]
+pub struct ChunkQuery {
+    client_id: Snowflake,
+    upload_id: Snowflake,
+}
+
+#[derive(Deserialize)]
+pub struct FinalizeQuery {
+    client_id: Snowflake,
+    upload_id: Snowflake,
+}
+
+#[derive(Serialize)]
+pub struct FinalizeResponse {
+    video_id: Snowflake,
+    filename: String,
+    size_bytes: u64,
+}
+
+pub async fn upload_init_handler(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<UploadQuery>,
-    headers: HeaderMap,
-    mut multipart: Multipart,
-) -> Result<Response, (StatusCode, String)> {
+    Query(q): Query<InitQuery>,
+    Json(body): Json<UploadInitBody>,
+) -> Result<Json<UploadInitResponse>, (StatusCode, String)> {
     state
         .services()
         .permission()
-        .require(&query.client_id, Permissions::MANAGE_PLAYLIST)
+        .require(&q.client_id, Permissions::MANAGE_MEDIA)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
 
-    let total_estimate = headers
-        .get(CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
-
-    // Find the file field; skip anything else the client sends along.
-    let mut field = loop {
-        match multipart
-            .next_field()
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {e}")))?
-        {
-            Some(f) if f.name() == Some("file") => break f,
-            Some(_) => continue,
-            None => return Err((StatusCode::BAD_REQUEST, "No file field in request".into())),
-        }
-    };
-
-    let filename = field
-        .file_name()
-        .ok_or((StatusCode::BAD_REQUEST, "No filename provided".into()))?
-        .to_string();
-
-    let ext = std::path::Path::new(&filename)
+    let ext = std::path::Path::new(&body.filename)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_lowercase)
@@ -83,108 +104,166 @@ pub async fn upload_handler(
 
     let (video_id, final_path) = state.services().video().reserve(&ext);
     let part_path: PathBuf = final_path.with_extension(format!("{ext}.part"));
-    let guard = PartialFileGuard::new(part_path.clone());
 
-    // Create and broadcast the initial widget.
+    // Create empty .part so chunk handlers can open in append mode.
+    File::create(&part_path).await.map_err(internal)?;
+
     let widget = state
         .services()
         .message()
         .create_widget(WidgetState::Upload {
-            filename: filename.clone(),
+            uploader: q.client_id,
+            filename: body.filename.clone(),
+            target: video_id,
             bytes_done: 0,
-            bytes_total: total_estimate,
+            bytes_total: body.total_size,
         })
         .await;
     let widget_id = widget.id;
     apply_effect(
         &state,
-        Effect::Global(ServerMessage::WidgetUpdated { entry: widget }),
+        Effect::Global(ServerMessage::MessageCreated { entry: widget }),
     )
     .await
     .map_err(internal)?;
 
-    // Stream to disk with throttled progress broadcasts. `bytes_done` is
-    // kept outside the async block so the error path can report the real
-    // number instead of 0.
-    let mut bytes_done: u64 = 0;
-    let stream_result: Result<(), (StatusCode, String)> = async {
-        let mut file = File::create(&part_path).await.map_err(internal)?;
-        let mut last_update = Instant::now();
-        let update_interval = Duration::from_millis(500);
+    let session = UploadSession {
+        client_id: q.client_id,
+        filename: body.filename,
+        part_path,
+        final_path,
+        bytes_received: 0,
+        bytes_expected: body.total_size,
+        widget_id,
+        last_activity: Instant::now(),
+    };
+    state
+        .upload_sessions()
+        .write()
+        .await
+        .insert(video_id, session);
 
-        while let Some(chunk) = field
-            .chunk()
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Chunk read error: {e}")))?
-        {
-            bytes_done += chunk.len() as u64;
-            file.write_all(&chunk).await.map_err(internal)?;
+    Ok(Json(UploadInitResponse {
+        upload_id: video_id,
+    }))
+}
 
-            if last_update.elapsed() >= update_interval {
-                last_update = Instant::now();
-                let updated = state
-                    .services()
-                    .message()
-                    .update_widget(
-                        widget_id,
-                        WidgetState::Upload {
-                            filename: filename.clone(),
-                            bytes_done,
-                            bytes_total: total_estimate.max(bytes_done),
-                        },
-                    )
-                    .await
-                    .map_err(internal)?;
-                apply_effect(
-                    &state,
-                    Effect::Global(ServerMessage::WidgetUpdated { entry: updated }),
-                )
-                .await
-                .map_err(internal)?;
-            }
+pub async fn upload_chunk_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ChunkQuery>,
+    body: Body,
+) -> Result<StatusCode, (StatusCode, String)> {
+    state
+        .services()
+        .permission()
+        .require(&q.client_id, Permissions::MANAGE_MEDIA)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+
+    // Snapshot session fields without holding the lock during I/O.
+    let (part_path, filename, widget_id, bytes_expected) = {
+        let sessions = state.upload_sessions().read().await;
+        let s = sessions
+            .get(&q.upload_id)
+            .ok_or((StatusCode::NOT_FOUND, "Upload session not found".into()))?;
+        if s.client_id != q.client_id {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Upload belongs to a different client".into(),
+            ));
         }
+        (
+            s.part_path.clone(),
+            s.filename.clone(),
+            s.widget_id,
+            s.bytes_expected,
+        )
+    };
 
-        file.flush().await.map_err(internal)?;
-        Ok(())
-    }
-    .await;
-
-    if let Err(e) = stream_result {
-        // Best-effort: finalize the widget so clients don't see a stuck
-        // progress bar. If this fails, the original error still propagates.
-        if let Ok(w) = state
-            .services()
-            .message()
-            .finish_widget(
-                widget_id,
-                WidgetState::Upload {
-                    filename: filename.clone(),
-                    bytes_done,
-                    bytes_total: total_estimate.max(bytes_done),
-                },
-            )
-            .await
-        {
-            let _ = apply_effect(
-                &state,
-                Effect::Global(ServerMessage::WidgetDone { entry: w }),
-            )
-            .await;
-        }
-        // guard drops → .part file removed
-        return Err(e);
-    }
-
-    // Success path: atomic rename, register, finalize widget.
-    tokio::fs::rename(&part_path, &final_path)
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(&part_path)
         .await
         .map_err(internal)?;
-    guard.commit();
+
+    let mut stream = body.into_data_stream();
+    let mut chunk_bytes: u64 = 0;
+    while let Some(next) = stream.next().await {
+        let buf = next.map_err(|e| (StatusCode::BAD_REQUEST, format!("Body read error: {e}")))?;
+        file.write_all(&buf).await.map_err(internal)?;
+        chunk_bytes += buf.len() as u64;
+    }
+    file.flush().await.map_err(internal)?;
+
+    let new_total = {
+        let mut sessions = state.upload_sessions().write().await;
+        let s = sessions.get_mut(&q.upload_id).ok_or((
+            StatusCode::NOT_FOUND,
+            "Upload session disappeared mid-chunk".into(),
+        ))?;
+        s.bytes_received += chunk_bytes;
+        s.last_activity = Instant::now();
+        s.bytes_received
+    };
+
+    let updated = state
+        .services()
+        .message()
+        .update_widget(
+            widget_id,
+            WidgetState::Upload {
+                uploader: q.client_id,
+                filename,
+                target: q.upload_id,
+                bytes_done: new_total,
+                bytes_total: bytes_expected.max(new_total),
+            },
+        )
+        .await
+        .map_err(internal)?;
+    apply_effect(
+        &state,
+        Effect::Global(ServerMessage::WidgetUpdated { entry: updated }),
+    )
+    .await
+    .map_err(internal)?;
+
+    Ok(StatusCode::OK)
+}
+
+pub async fn upload_finalize_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<FinalizeQuery>,
+) -> Result<Json<FinalizeResponse>, (StatusCode, String)> {
+    state
+        .services()
+        .permission()
+        .require(&q.client_id, Permissions::MANAGE_MEDIA)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+
+    let session = {
+        let mut sessions = state.upload_sessions().write().await;
+        match sessions.get(&q.upload_id) {
+            None => return Err((StatusCode::NOT_FOUND, "Upload session not found".into())),
+            Some(s) if s.client_id != q.client_id => {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "Upload belongs to a different client".into(),
+                ));
+            }
+            Some(_) => sessions.remove(&q.upload_id).unwrap(),
+        }
+    };
+
+    tokio::fs::rename(&session.part_path, &session.final_path)
+        .await
+        .map_err(internal)?;
 
     state
         .services()
         .video()
-        .register(video_id, filename.clone())
+        .register(q.upload_id, session.filename.clone())
         .await
         .map_err(internal)?;
 
@@ -192,11 +271,13 @@ pub async fn upload_handler(
         .services()
         .message()
         .finish_widget(
-            widget_id,
+            session.widget_id,
             WidgetState::Upload {
-                filename: filename.clone(),
-                bytes_done,
-                bytes_total: bytes_done,
+                uploader: q.client_id,
+                filename: session.filename.clone(),
+                target: q.client_id,
+                bytes_done: session.bytes_received,
+                bytes_total: session.bytes_received,
             },
         )
         .await
@@ -210,10 +291,65 @@ pub async fn upload_handler(
     .await
     .map_err(internal)?;
 
-    Ok(Json(json!({
-        "video_id": video_id,
-        "filename": filename,
-        "size_bytes": bytes_done,
+    let playlist = state.services().video().get_playlist().await;
+    apply_effect(
+        &state,
+        Effect::Global(ServerMessage::PlaylistUpdated { playlist }),
+    )
+    .await
+    .map_err(internal)?;
+
+    Ok(Json(FinalizeResponse {
+        video_id: q.upload_id,
+        filename: session.filename,
+        size_bytes: session.bytes_received,
     }))
-    .into_response())
+}
+
+/// Background task: removes sessions idle for >30 min, deleting the .part
+/// file and closing the widget. Spawn once at startup.
+pub async fn upload_reaper(state: Arc<AppState>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(60));
+    let ttl = Duration::from_secs(30 * 60);
+    loop {
+        interval.tick().await;
+        let now = Instant::now();
+
+        let stale: Vec<(Snowflake, UploadSession)> = {
+            let mut sessions = state.upload_sessions().write().await;
+            let ids: Vec<Snowflake> = sessions
+                .iter()
+                .filter(|(_, s)| now.duration_since(s.last_activity) > ttl)
+                .map(|(id, _)| *id)
+                .collect();
+            ids.into_iter()
+                .filter_map(|id| sessions.remove(&id).map(|s| (id, s)))
+                .collect()
+        };
+
+        for (id, session) in stale {
+            let _ = tokio::fs::remove_file(&session.part_path).await;
+            if let Ok(w) = state
+                .services()
+                .message()
+                .finish_widget(
+                    session.widget_id,
+                    WidgetState::Upload {
+                        uploader: Snowflake::system(),
+                        filename: session.filename,
+                        target: id,
+                        bytes_done: session.bytes_received,
+                        bytes_total: session.bytes_expected.max(session.bytes_received),
+                    },
+                )
+                .await
+            {
+                let _ = apply_effect(
+                    &state,
+                    Effect::Global(ServerMessage::WidgetDone { entry: w }),
+                )
+                .await;
+            }
+        }
+    }
 }

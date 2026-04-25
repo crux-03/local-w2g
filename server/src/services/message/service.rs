@@ -33,6 +33,10 @@ impl MessageService {
             .cloned()
     }
 
+    pub async fn list(&self) -> Vec<Entry> {
+        self.messages.read().await.iter().cloned().collect()
+    }
+
     async fn append(&self, kind: EntryKind) -> Entry {
         let entry = Entry {
             id: self.snowflake_service.generate(),
@@ -87,15 +91,25 @@ impl MessageService {
         id: Snowflake,
         new_state: WidgetState,
     ) -> Result<Entry, crate::Error> {
-        let mut entry = self.update_widget(id, new_state).await?;
-        match &mut entry.kind {
-            EntryKind::Widget { state: _, done } => {
-                *done = true;
-                Ok(entry)
+        let mut messages = self.messages.write().await;
+
+        let widget_entry = messages
+            .iter_mut()
+            .find(|x| x.id == id)
+            .ok_or(crate::Error::MessageNotFound)?;
+
+        match &mut widget_entry.kind {
+            EntryKind::Widget { state, done } => {
+                if *done {
+                    return Err(crate::Error::WidgetAlreadyDone);
+                }
+                *state = new_state;
+                *done = true; // Permanently set to true in the store
             }
-            _ => Err(crate::Error::Internal(
-                "This should never happen".to_string(),
-            )),
+            _ => return Err(crate::Error::NotAWidget),
         }
+
+        // 3. Clone and return the updated state
+        Ok(widget_entry.clone())
     }
 }

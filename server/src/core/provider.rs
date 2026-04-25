@@ -23,7 +23,7 @@ impl ServiceProvider {
         let message_service = Arc::new(MessageService::new(100, Arc::clone(&snowflake_service)));
         let playback_service = Arc::new(PlaybackService::new(Arc::clone(&snowflake_service)));
         let video_service =
-            Arc::new(VideoService::new("../videos", Arc::clone(&snowflake_service)).await?);
+            Arc::new(VideoService::new("./videos", Arc::clone(&snowflake_service)).await?);
         let state_service = Arc::new(StateService::new(
             Arc::clone(&user_service),
             Arc::clone(&video_service),

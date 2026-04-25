@@ -1,9 +1,12 @@
 pub mod download;
 pub mod handler;
 pub mod messages;
+pub mod misc;
 pub mod playback;
+pub mod playlist;
 pub mod resync;
 pub mod state;
+pub mod user;
 
 use std::sync::Arc;
 
@@ -29,6 +32,7 @@ pub trait Command: Send {
     }
 }
 
+#[allow(dead_code)]
 pub enum Effect {
     Global(ServerMessage),
     Others(Snowflake, ServerMessage),

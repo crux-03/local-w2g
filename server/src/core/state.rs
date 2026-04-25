@@ -2,13 +2,14 @@ use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{RwLock, mpsc};
 
-use crate::{Snowflake, core::ServiceProvider};
+use crate::{Snowflake, core::ServiceProvider, routes::UploadSession};
 
 type ConnectionMap = Arc<RwLock<HashMap<Snowflake, mpsc::UnboundedSender<String>>>>;
 
 pub struct AppState {
     provider: Arc<ServiceProvider>,
     connections: ConnectionMap,
+    upload_sessions: Arc<RwLock<HashMap<Snowflake, UploadSession>>>,
 }
 
 impl AppState {
@@ -16,11 +17,16 @@ impl AppState {
         Ok(Self {
             provider: Arc::new(ServiceProvider::new().await?),
             connections: Arc::new(RwLock::new(HashMap::new())),
+            upload_sessions: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
     pub fn services(&self) -> &Arc<ServiceProvider> {
         &self.provider
+    }
+
+    pub fn upload_sessions(&self) -> &Arc<RwLock<HashMap<Snowflake, UploadSession>>> {
+        &self.upload_sessions
     }
 
     pub async fn add_connection(&self, user_id: Snowflake, tx: mpsc::UnboundedSender<String>) {

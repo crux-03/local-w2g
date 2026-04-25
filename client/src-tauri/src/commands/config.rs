@@ -1,0 +1,59 @@
+use tauri::{AppHandle, Manager};
+
+use crate::{core::AppState, CommandResult};
+
+#[tauri::command]
+pub async fn load_username(app: AppHandle) -> String {
+    app.state::<AppState>()
+        .config()
+        .read()
+        .await
+        .username
+        .clone()
+}
+
+#[tauri::command]
+pub async fn load_server_url(app: AppHandle) -> String {
+    app.state::<AppState>()
+        .config()
+        .read()
+        .await
+        .server_url
+        .clone()
+}
+
+#[tauri::command]
+pub async fn load_mpv_binary(app: AppHandle) -> String {
+    app.state::<AppState>()
+        .config()
+        .read()
+        .await
+        .mpv_binary_path
+        .to_str()
+        .unwrap_or_default()
+        .to_string()
+        .clone()
+}
+
+#[tauri::command]
+pub async fn load_videos_dir(app: AppHandle) -> String {
+    app.state::<AppState>()
+        .config()
+        .read()
+        .await
+        .videos_directory
+        .to_str()
+        .unwrap_or_default()
+        .to_string()
+        .clone()
+}
+
+#[tauri::command]
+pub async fn set_mpv_binary(app: AppHandle, path: String) -> CommandResult<()> {
+    app.state::<AppState>().set_mpv_binary(&app, path).await
+}
+
+#[tauri::command]
+pub async fn set_videos_dir(app: AppHandle, path: String) -> CommandResult<()> {
+    app.state::<AppState>().set_videos_dir(&app, path).await
+}

@@ -32,4 +32,6 @@ pub enum Error {
     Forbidden(String),
     #[error("Can't playing with no video select")]
     NoVideoSelected,
+    #[error("Can't demote own permissions")]
+    CannotDemoteSelf,
 }

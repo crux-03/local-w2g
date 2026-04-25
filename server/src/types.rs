@@ -6,6 +6,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Hash, Ord)]
 pub struct Snowflake(pub i64);
 
+impl Snowflake {
+    pub fn system() -> Self {
+        Snowflake(0)
+    }
+}
+
 impl std::fmt::Display for Snowflake {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

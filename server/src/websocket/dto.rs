@@ -2,12 +2,29 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Snowflake,
-    services::{message::Entry, state::UserReadinessView},
+    services::{
+        message::Entry, permissions::Permissions, state::UserReadinessView, user::User,
+        videos::VideoEntry,
+    },
 };
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
+    // Utility
+    Pong,
+
+    // Users
+    UserIdentity {
+        id: Snowflake,
+    },
+    UserList {
+        users: Vec<User>,
+    },
+    PermissionUpdate {
+        user_id: Snowflake,
+        permissions: Permissions,
+    },
     // Messages
     MessageCreated {
         entry: Entry,
@@ -17,6 +34,9 @@ pub enum ServerMessage {
     },
     WidgetDone {
         entry: Entry,
+    },
+    MessageHistory {
+        history: Vec<Entry>,
     },
 
     // Resync
@@ -44,6 +64,11 @@ pub enum ServerMessage {
         request_id: Snowflake,
         non_confirmers: Vec<Snowflake>,
     },
+
+    // Playlist
+    PlaylistUpdated {
+        playlist: Vec<VideoEntry>,
+    },
     VideoSelected {
         video_id: Snowflake,
     },
@@ -57,7 +82,16 @@ pub enum ServerMessage {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
+    Ping,
+    RequestIdentity,
+    RequestUsers,
+    EditUserPermissions {
+        target_user: Snowflake,
+        permission: Permissions,
+        granted: bool,
+    },
     // Message
+    RequestMessageHistory,
     SendMessage {
         content: String,
     },
@@ -90,7 +124,10 @@ pub enum ClientMessage {
 
     // Playback
     Play,
+
+    // Playlist
     SelectVideo {
         video_id: Snowflake,
     },
+    RequestPlaylist,
 }

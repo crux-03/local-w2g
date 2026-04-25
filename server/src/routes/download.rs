@@ -8,7 +8,13 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tokio_util::io::ReaderStream;
 
-use crate::{Snowflake, commands::{Effect, handler::apply_effect}, core::AppState, services::message::WidgetState, websocket::ServerMessage};
+use crate::{
+    Snowflake,
+    commands::{Effect, handler::apply_effect},
+    core::AppState,
+    services::message::WidgetState,
+    websocket::ServerMessage,
+};
 
 #[derive(Deserialize)]
 pub struct DownloadQuery {
@@ -65,7 +71,7 @@ pub async fn download_handler(
 
     apply_effect(
         &state,
-        Effect::Global(ServerMessage::WidgetUpdated { entry: widget }),
+        Effect::Global(ServerMessage::MessageCreated { entry: widget }),
     )
     .await
     .map_err(|e| {

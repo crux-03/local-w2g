@@ -33,4 +33,31 @@ impl PermissionService {
             ))
         }
     }
+
+    pub async fn set_user_permission(
+        &self,
+        target_user: Snowflake,
+        permission: Permissions,
+        granted: bool,
+    ) -> Result<Permissions, crate::Error> {
+        let user = self
+            .user_service
+            .get_user(&target_user)
+            .await
+            .ok_or(crate::Error::InvalidUser)?;
+
+        let mut new_perms = user.permissions;
+        new_perms.set(permission, granted);
+
+        // No-op short-circuit avoids spurious broadcasts.
+        if new_perms == user.permissions {
+            return Ok(new_perms);
+        }
+
+        self.user_service
+            .update_permissions(target_user, new_perms)
+            .await?;
+
+        Ok(new_perms)
+    }
 }

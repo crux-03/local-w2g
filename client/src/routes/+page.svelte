@@ -1,156 +1,195 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+    import { invoke } from "@tauri-apps/api/core";
+    import { ClipboardPaste, Folder } from "@lucide/svelte";
+    import { goto } from "$app/navigation";
+    import { readText } from "@tauri-apps/plugin-clipboard-manager";
+    import { onMount } from "svelte";
 
-  let name = $state("");
-  let greetMsg = $state("");
+    let username = $state("");
+    let server_url = $state("");
+    let server_pw = $state("");
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
+    let video_dir = $state("");
+    let mpv_binary = $state("");
+
+    onMount(async () => {
+        username = await invoke("load_username");
+        server_url = await invoke("load_server_url");
+        mpv_binary = await invoke("load_mpv_binary");
+        video_dir = await invoke("load_videos_dir");
+    });
+
+    async function connectClick() {
+        try {
+            await invoke("connect", {
+                username: username,
+                serverUrl: server_url,
+                serverPw: server_pw,
+            });
+            goto("/app");
+        } catch (error) {
+            console.log("Failed to connect");
+        }
+    }
+
+    async function pastePassword() {
+        try {
+            const text = await readText();
+            server_pw = text;
+        } catch (error) {
+            console.log(`Error when reading clipboard: ${error}`);
+        }
+    }
+
+    async function browseVideoDir() {
+        try {
+            const path = (await invoke("pick_folder")) as string;
+            if (path) {
+                video_dir = path;
+                await invoke("set_videos_dir", { path: video_dir });
+            }
+        } catch (error) {
+            console.log(`Error when selecting video path: ${error}`);
+        }
+    }
+
+    async function browseMpvBinary() {
+        try {
+            const path = (await invoke("pick_file")) as string;
+            if (path) {
+                mpv_binary = path;
+                await invoke("set_mpv_binary", { path: mpv_binary });
+            }
+        } catch (error) {
+            console.log(`Error when selecting video path: ${error}`);
+        }
+    }
 </script>
 
 <main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+    <div class="container-inner">
+        <h1>Watch2Gether</h1>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+        <section>
+            <h2>Connection</h2>
+            <div class="field">
+                <label for="username-input" class="label">Username</label>
+                <input
+                    id="username-input"
+                    class="input"
+                    bind:value={username}
+                />
+            </div>
+            <div class="field">
+                <label for="server-url-input" class="label">Server URL</label>
+                <input
+                    id="server-url-input"
+                    class="input"
+                    bind:value={server_url}
+                />
+            </div>
+            <div class="field">
+                <label for="password-input" class="label">Password</label>
+                <div class="field-row">
+                    <input
+                        id="password-input"
+                        class="input"
+                        type="password"
+                        bind:value={server_pw}
+                    />
+                    <button class="btn btn-secondary" onclick={pastePassword}
+                        ><ClipboardPaste /></button
+                    >
+                </div>
+            </div>
+        </section>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
+        <section>
+            <h2>Settings</h2>
+            <div class="field">
+                <label for="video-dir-input" class="label"
+                    >Video Directory</label
+                >
+                <div class="field-row">
+                    <input
+                        id="video-dir-input"
+                        class="input"
+                        bind:value={video_dir}
+                        readonly
+                    />
+                    <button class="btn btn-secondary" onclick={browseVideoDir}
+                        ><Folder /></button
+                    >
+                </div>
+            </div>
+            <div class="field">
+                <label for="mpv-binary-input" class="label">MPV Binary</label>
+                <div class="field-row">
+                    <input
+                        id="mpv-binary-input"
+                        class="input"
+                        bind:value={mpv_binary}
+                        readonly
+                    />
+                    <button class="btn btn-secondary" onclick={browseMpvBinary}
+                        ><Folder /></button
+                    >
+                </div>
+            </div>
+        </section>
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick={connectClick}
+                >Connect</button
+            >
+        </div>
+    </div>
 </main>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+    .container {
+        display: flex;
+        justify-content: center;
+        min-height: 100%;
+        padding: var(--space-8) var(--space-4);
+        background-color: var(--color-bg);
+    }
 
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
+    .container-inner {
+        width: 100%;
+        max-width: 560px;
+    }
 
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+    h1 {
+        margin: 0 0 var(--space-8);
+    }
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+    section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        margin-bottom: var(--space-8);
+    }
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
+    section:last-of-type {
+        margin-bottom: 0;
+    }
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
+    section h2 {
+        margin: 0 0 var(--space-1);
+    }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
+    .field-row {
+        display: flex;
+        gap: var(--space-2);
+    }
 
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
+    .field-row .input {
+        flex: 1;
+    }
+    .form-actions {
+        margin-top: var(--space-8);
+    }
+    .form-actions .btn {
+        width: 100%;
+    }
 </style>

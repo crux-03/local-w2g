@@ -7,7 +7,6 @@ mod service;
 mod types;
 
 pub use service::VideoService;
-pub use types::PartialFileGuard;
 
 use crate::Snowflake;
 
@@ -82,6 +81,11 @@ impl Index {
     {
         let dir = dir.into();
         let index_path = dir.join(INDEX_FILENAME);
+
+        match tokio::fs::create_dir_all(&dir).await {
+            Ok(()) => {}
+            Err(e) => return Err(e),
+        }
 
         // Parse carrier (or start empty).
         let mut entries: HashMap<Snowflake, VideoEntry> = match tokio::fs::read(&index_path).await {

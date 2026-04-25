@@ -31,7 +31,9 @@ async fn start_widget_demo(state: Arc<AppState>) -> anyhow::Result<()> {
         .services()
         .message()
         .create_widget(WidgetState::Upload {
+            uploader: Snowflake::system(),
             filename: "test.mp4".to_string(),
+            target: Snowflake(-1),
             bytes_done: 0,
             bytes_total: 10 * 1024 * 1024,
         })
@@ -103,9 +105,7 @@ async fn main() -> anyhow::Result<()> {
                 let view = sweep_state.services().state().view_for(user_id).await;
                 let _ = apply_effect(
                     &sweep_state,
-                    Effect::Global(ServerMessage::ReadinessUpdated {
-                        readiness: view,
-                    }),
+                    Effect::Global(ServerMessage::ReadinessUpdated { readiness: view }),
                 )
                 .await;
             }

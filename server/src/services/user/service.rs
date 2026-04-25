@@ -70,4 +70,17 @@ impl UserService {
         let users = self.users.read().await;
         users.values().cloned().collect()
     }
+
+    pub async fn update_permissions(
+        &self,
+        target_user: Snowflake,
+        permissions: Permissions,
+    ) -> Result<(), crate::Error> {
+        let mut users = self.users.write().await;
+        users
+            .get_mut(&target_user)
+            .ok_or(crate::Error::InvalidUser)?
+            .permissions = permissions;
+        Ok(())
+    }
 }

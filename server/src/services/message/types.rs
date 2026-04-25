@@ -21,7 +21,9 @@ pub enum EntryKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WidgetState {
     Upload {
+        uploader: Snowflake,
         filename: String,
+        target: Snowflake,
         bytes_done: u64,
         bytes_total: u64,
     },
