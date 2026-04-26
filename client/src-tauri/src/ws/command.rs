@@ -36,9 +36,10 @@ pub async fn connect(
 
     let ws_url = format_url(server_url);
     let (handle, ready) = super::spawn(ws_url, username, server_pw, app);
-    let _ = ready
+    ready
         .await
-        .map_err(|_| ConnectError::TaskDied.to_string())?;
+        .map_err(|_| ConnectError::TaskDied.to_string())?
+        .map_err(|e| e.to_string())?;
     state.set_ws_handle(handle).await;
 
     tracing::info!("WebSocket connected");
