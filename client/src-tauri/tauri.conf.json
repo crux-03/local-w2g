@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Watch2Gether Client",
+  "productName": "watch2gether_client",
   "version": "1.0.0",
   "identifier": "com.crux.w2g-client",
   "build": {
