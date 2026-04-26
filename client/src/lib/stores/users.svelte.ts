@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Permissions, Snowflake } from "$lib/api/types";
 import { compareSnowflake } from "$lib/helpers/compare";
+import { addError } from "./error.svelte";
 
 let users = $state<User[]>([]);
 let self = $state<Snowflake>();
@@ -11,7 +12,7 @@ let self = $state<Snowflake>();
 listen<User[]>("user_list", (event) => {
   users = event.payload.sort((a, b) => compareSnowflake(a.id, b.id));
 }).catch((error) => {
-  console.error(`Failed to register users listener: ${error}`);
+  addError(`Failed to register users listener: ${error}`);
 });
 
 listen<[Snowflake, Permissions]>("permission_update", (event) => {
@@ -21,7 +22,7 @@ listen<[Snowflake, Permissions]>("permission_update", (event) => {
     users[index].permissions = event.payload[1];
   }
 }).catch((error) => {
-  console.error(`Failed to register permission_update listener: ${error}`);
+  addError(`Failed to register permission_update listener: ${error}`);
 });
 
 export const userStore = {
@@ -37,16 +38,15 @@ export const userStore = {
     try {
       await invoke("request_users");
     } catch (error) {
-      console.log(`Error when requesting users: ${error}`);
+      addError(`Error when requesting users: ${error}`);
     }
   },
   async identifySelf() {
     try {
       let id = (await invoke("get_user_id")) as Snowflake;
-      console.log(id);
       self = id;
     } catch (error) {
-      console.log(`Error when identifying self: ${error}`);
+      addError(`Error when identifying self: ${error}`);
     }
   },
   async updatePermissions(
@@ -61,7 +61,7 @@ export const userStore = {
         granted: granted,
       });
     } catch (error) {
-      console.log(`Error when updating permissions: ${error}`);
+      addError(`Error when updating permissions: ${error}`);
     }
   },
 };

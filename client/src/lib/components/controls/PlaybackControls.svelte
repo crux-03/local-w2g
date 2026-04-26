@@ -1,6 +1,7 @@
 <script>
     import { Permissions } from "$src/lib/api/types";
     import { hasPermission } from "$src/lib/helpers/permission";
+    import { addError } from "$src/lib/stores/error.svelte";
     import { playlistStore } from "$src/lib/stores/playlist.svelte";
     import { userStore } from "$src/lib/stores/users.svelte";
     import {
@@ -26,7 +27,7 @@
                 relativeSeconds: -5.0,
             });
         } catch (error) {
-            console.log(`Error when seeking (back): ${error}`);
+            addError(`Error when seeking (back): ${error}`);
         }
     }
     async function handleSeekForward() {
@@ -35,28 +36,28 @@
                 relativeSeconds: 5.0,
             });
         } catch (error) {
-            console.log(`Error when seeking (forward): ${error}`);
+            addError(`Error when seeking (forward): ${error}`);
         }
     }
     async function handlePlay() {
         try {
             await invoke("resume");
         } catch (error) {
-            console.log(`Error when playing: ${error}`);
+            addError(`Error when playing: ${error}`);
         }
     }
     async function handlePause() {
         try {
             await invoke("pause");
         } catch (error) {
-            console.log(`Error when pausing: ${error}`);
+            addError(`Error when pausing: ${error}`);
         }
     }
     async function handleResync() {
         try {
             await invoke("resync");
         } catch (error) {
-            console.log(`Error when pausing: ${error}`);
+            addError(`Error when pausing: ${error}`);
         }
     }
 </script>

@@ -130,7 +130,7 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::spawn(async move { start_widget_demo(Arc::clone(&app_state)).await });
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr: SocketAddr = "[::]:3000".parse().unwrap();
     tracing::info!("Server starting on {}", addr);
     let listener = TcpListener::bind(addr).await?;
     axum::serve(NoDelayListener(listener), app).await?;

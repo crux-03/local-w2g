@@ -13,8 +13,10 @@
     import Details from "$src/lib/components/Details.svelte";
     import EditEntryModal from "$src/lib/components/EditEntryModal.svelte";
     import PlaylistItem from "$src/lib/components/PlaylistItem.svelte";
+    import Toast from "$src/lib/components/Toast.svelte";
     import UserItem from "$src/lib/components/user/UserItem.svelte";
     import { hasPermission } from "$src/lib/helpers/permission";
+    import { addError, errorStore } from "$src/lib/stores/error.svelte";
     import { messageStore } from "$src/lib/stores/messages.svelte";
     import { playlistStore } from "$src/lib/stores/playlist.svelte";
     import { userStore } from "$src/lib/stores/users.svelte";
@@ -102,7 +104,7 @@
                 await invoke("upload_video", { filePath: path });
             }
         } catch (error) {
-            console.log(`Error when uploading file: ${error}`);
+            addError(error as string);
         }
     }
 </script>
@@ -153,10 +155,12 @@
             >
         {/if}
     </aside>
-    
+
     <!-- Modals -->
     <EditEntryModal />
 </main>
+
+<Toast />
 
 <style>
     .app {

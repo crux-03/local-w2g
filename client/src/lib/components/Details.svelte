@@ -9,6 +9,7 @@
     import { onMount } from "svelte";
     import { listen } from "@tauri-apps/api/event";
     import { formatPing } from "$lib/helpers/format";
+    import { addError } from "../stores/error.svelte";
 
     const me = $derived(userStore.me);
     const selectedId = $derived(playlistStore.selected);
@@ -45,7 +46,7 @@
         try {
             await invoke("play", { videoId: selectedId });
         } catch (error) {
-            console.log(`Error when playing: ${error}`);
+            addError(`Error when playing: ${error}`);
         }
     }
 
@@ -61,7 +62,7 @@
                 copied = false;
             }, 1500);
         } catch (error) {
-            console.log(`Error when copying password: ${error}`);
+            addError(`Error when copying password: ${error}`);
         }
     }
 
@@ -69,7 +70,7 @@
         listen<number>("pong", (event) => {
             ping = formatPing(event.payload);
         }).catch((error) => {
-            console.log(`Failed to setup pong handler: ${error}`);
+            addError(`Failed to setup pong handler: ${error}`);
         });
     });
 </script>

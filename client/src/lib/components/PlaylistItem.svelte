@@ -14,6 +14,7 @@
     import { invoke } from "@tauri-apps/api/core";
     import type { MediaProbe } from "$lib/api/media";
     import { editStore } from "../stores/edit.svelte";
+    import { addError } from "../stores/error.svelte";
 
     let { entry }: { entry: VideoEntry } = $props();
     let me = $derived(userStore.me);
@@ -34,6 +35,7 @@
                 displayName: entry.display_name,
             });
         } catch (error) {
+            addError(error as string);
             console.log(`Error when downloading: ${error}`);
         }
     }
@@ -53,6 +55,7 @@
             });
             editStore.open(entry, probe);
         } catch (e) {
+            addError(e as string);
             console.error("Failed to probe media:", e);
         }
     }

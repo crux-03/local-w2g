@@ -1,6 +1,11 @@
-import type { Entry, EntryKindWidget, WidgetStateDownload } from "$lib/api/types";
+import type {
+  Entry,
+  EntryKindWidget,
+  WidgetStateDownload,
+} from "$lib/api/types";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { addError } from "./error.svelte";
 
 let messages = $state<Entry[]>([]);
 
@@ -8,13 +13,13 @@ listen<Entry[]>("message_history", (event) => {
   messages = event.payload;
   messages.reverse();
 }).catch((error) => {
-  console.error(`Failed to register users listener: ${error}`);
+  addError(`Failed to register users listener: ${error}`);
 });
 
 listen<Entry>("message_created", (event) => {
   messages.unshift(event.payload);
 }).catch((error) => {
-  console.error(`Failed to register users listener: ${error}`);
+  addError(`Failed to register users listener: ${error}`);
 });
 
 listen<Entry>("widget_updated", (event) => {
@@ -41,14 +46,14 @@ export const messageStore = {
     try {
       await invoke("request_message_history");
     } catch (error) {
-      console.log(`Error when requesting message history: ${error}`);
+      addError(`Error when requesting message history: ${error}`);
     }
   },
   async sendMessage(content: String) {
     try {
       await invoke("send_chat_message", { content: content });
     } catch (error) {
-      console.log(`Error when sending message: ${error}`);
+      addError(`Error when sending message: ${error}`);
     }
   },
   get activeDownloads(): WidgetStateDownload[] {

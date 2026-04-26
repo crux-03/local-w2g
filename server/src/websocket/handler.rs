@@ -29,16 +29,20 @@ pub async fn websocket_handler(
         .get("X-Username")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_owned());
+    tracing::debug!("Client connect attempt with username: {username:?}");
     ws.on_upgrade(move |socket| handle_ws_connection(socket, username, Arc::clone(&state)))
 }
 
 async fn handle_ws_connection(socket: WebSocket, username: Option<String>, state: Arc<AppState>) {
+    tracing::debug!("Set up socket");
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-
+    
+    tracing::debug!("Adding user");
     let user = state.services().user().add_user(username).await;
 
     // Store connection
+    tracing::debug!("Adding connection");
     state.add_connection(user.id, tx).await;
 
     if let Err(e) = broadcast_user_list(&state).await {

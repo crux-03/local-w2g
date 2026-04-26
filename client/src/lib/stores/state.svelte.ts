@@ -1,5 +1,6 @@
 import { type UserReadinessView } from "$lib/api/types";
 import { listen } from "@tauri-apps/api/event";
+import { addError } from "./error.svelte";
 
 var states = $state<UserReadinessView[]>([]);
 
@@ -11,7 +12,7 @@ listen<UserReadinessView>("readiness_updated", (event) => {
     states.push(event.payload);
   }
 }).catch((error) => {
-  console.error(`Failed to register readiness_updated listener: ${error}`);
+  addError(`Failed to register readiness_updated listener: ${error}`);
 });
 
 export const stateStore = {
