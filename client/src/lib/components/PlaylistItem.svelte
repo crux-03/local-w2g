@@ -7,11 +7,13 @@
         ListVideo,
         Pencil,
     } from "@lucide/svelte";
-    import { userStore } from "../stores/users.svelte";
-    import { hasPermission } from "../helpers/permission";
-    import { Permissions } from "../api/types";
-    import { playlistStore } from "../stores/playlist.svelte";
+    import { userStore } from "$lib/stores/users.svelte";
+    import { hasPermission } from "$lib/helpers/permission";
+    import { Permissions } from "$lib/api/types";
+    import { playlistStore } from "$lib/stores/playlist.svelte";
     import { invoke } from "@tauri-apps/api/core";
+    import type { MediaProbe } from "$lib/api/media";
+    import { editStore } from "../stores/edit.svelte";
 
     let { entry }: { entry: VideoEntry } = $props();
     let me = $derived(userStore.me);
@@ -39,6 +41,21 @@
     async function selectVideo() {
         await playlistStore.selectVideo(entry.id);
     }
+
+    async function handleReorder(direction: "up" | "down") {
+        await playlistStore.reorder(entry.id, direction);
+    }
+
+    async function handleEdit() {
+        try {
+            const probe = await invoke<MediaProbe>("probe_media", {
+                id: entry.id,
+            });
+            editStore.open(entry, probe);
+        } catch (e) {
+            console.error("Failed to probe media:", e);
+        }
+    }
 </script>
 
 <div class="card {isSelected ? 'selected' : ''}">
@@ -49,7 +66,9 @@
         >
 
         {#if hasManageMediaPerms}
-            <button class="btn btn-ghost util-btn"><Pencil /></button>
+            <button class="btn btn-ghost util-btn" onclick={handleEdit}
+                ><Pencil /></button
+            >
         {:else if !isDownloaded}
             <button
                 class="btn btn-download util-btn align-end"
@@ -60,11 +79,15 @@
 
     {#if hasManageMediaPerms}
         <div class="toolbar">
-            <button class="btn btn-ghost util-btn" disabled={isFirst}
-                ><ChevronUp /></button
+            <button
+                class="btn btn-ghost util-btn"
+                onclick={async () => await handleReorder("up")}
+                disabled={isFirst}><ChevronUp /></button
             >
-            <button class="btn btn-ghost util-btn" disabled={isLast}
-                ><ChevronDown /></button
+            <button
+                class="btn btn-ghost util-btn"
+                onclick={async () => await handleReorder("down")}
+                disabled={isLast}><ChevronDown /></button
             >
             {#if !isSelected}
                 <button

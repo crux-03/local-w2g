@@ -33,7 +33,10 @@ async fn handle_inner(raw: &str, app: &AppHandle) -> Result<(), DispatchError> {
     let state = app.state::<AppState>();
 
     match msg {
-        ServerMessage::Pong => emit(app, "pong", &())?,
+        ServerMessage::Pong => {
+            let elapsed = state.sample_ping().await.elapsed();
+            emit(app, "pong", &elapsed.as_micros())?
+        }
 
         ServerMessage::UserIdentity { id } => state.set_client_id(id).await,
 
@@ -51,6 +54,7 @@ async fn handle_inner(raw: &str, app: &AppHandle) -> Result<(), DispatchError> {
 
         ServerMessage::RequestResyncReport { id } => {
             let mpv = state.mpv().await.map_err(DispatchError::Mpv)?;
+            mpv.pause().await.map_err(DispatchError::Mpv)?; // Resync should pause playback
             let timestamp = mpv.get_time_pos().await.map_err(DispatchError::Mpv)?;
 
             emit(app, "request_resync_report", &id)?;
@@ -132,12 +136,19 @@ async fn handle_inner(raw: &str, app: &AppHandle) -> Result<(), DispatchError> {
 
         ServerMessage::Play {
             request_id,
-            _video_id: _,
+            track_audio,
+            track_subtitles,
         } => {
             // By the time Play arrives, every client has already confirmed
             // ready, which means mpv is running and the file is loaded.
             // All that's left is to unpause.
             let mpv = state.mpv().await.map_err(DispatchError::Mpv)?;
+            mpv.set_audio_track(track_audio)
+                .await
+                .map_err(DispatchError::Mpv)?;
+            mpv.set_subtitle_track(track_subtitles)
+                .await
+                .map_err(DispatchError::Mpv)?;
             mpv.play().await.map_err(DispatchError::Mpv)?;
             emit(app, "play", &request_id)?;
         }
@@ -164,6 +175,13 @@ async fn handle_inner(raw: &str, app: &AppHandle) -> Result<(), DispatchError> {
             mpv.play().await.map_err(DispatchError::Mpv)?;
             emit(app, "resume", &true)?;
         }
+        ServerMessage::Seek { timestamp } => {
+            let mpv = state.mpv().await.map_err(DispatchError::Mpv)?;
+            mpv.seek_absolute(timestamp)
+                .await
+                .map_err(DispatchError::Mpv)?;
+            emit(app, "seek", &true)?;
+        }
 
         ServerMessage::VideoSelected { video_id } => emit(app, "video_selected", &video_id)?,
         ServerMessage::PlaylistUpdated { playlist } => {
@@ -174,12 +192,12 @@ async fn handle_inner(raw: &str, app: &AppHandle) -> Result<(), DispatchError> {
                     on_device.push(e.id);
                 }
             }
-            
+
             state
                 .ws_send(crate::protocol::ClientMessage::AssertReadyBulk { on_device })
                 .await
                 .map_err(|e| DispatchError::Ws(e))?;
-            
+
             emit(app, "playlist_updated", &playlist)?;
         }
 

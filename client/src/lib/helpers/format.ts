@@ -19,3 +19,10 @@ export function formatDuration(ms: number): string {
   const rem = totalSec - m * 60;
   return `${m}m ${rem}s`;
 }
+
+export function formatPing(micros: number): string {
+  if (!Number.isFinite(micros) || micros < 0) return "—";
+  if (micros < 1000) return `${Math.round(micros)}µs`;
+  const ms = micros / 1000;
+  return ms < 10 ? `${ms.toFixed(1)}ms` : `${Math.round(ms)}ms`;
+}

@@ -21,8 +21,8 @@ pub const INDEX_FILENAME: &str = ".index";
 pub struct VideoEntry {
     pub id: Snowflake,
     pub display_name: String,
-    pub audio_track: usize,
-    pub subtitle_track: usize,
+    pub audio_track: i32,
+    pub subtitle_track: i32,
     /// Position in the ordered list, contiguous from 0. Carrier files written
     /// before this field existed deserialize to 0; the load-time sort by
     /// `(order, id)` then renumbers deterministically.

@@ -20,7 +20,13 @@
         userStore.users.map((u) => u.display_name ?? u.id),
     );
 
-    type SegmentType = "text" | "username" | "permission" | "space";
+    type SegmentType =
+        | "text"
+        | "username"
+        | "permission"
+        | "space"
+        | "highlight"
+        | "category";
     type Segment = { type: SegmentType; text: string };
 
     function escapeRegex(s: string) {
@@ -33,7 +39,7 @@
     function pushSplit(
         out: Segment[],
         text: string,
-        type: "text" | "username" | "permission",
+        type: "text" | "username" | "permission" | "highlight" | "category",
     ) {
         const re = /(\s+)/g;
         let i = 0;
@@ -54,22 +60,27 @@
             .sort((a, b) => b.length - a.length)
             .map(escapeRegex);
 
-        const parts: string[] = [];
+        const parts: string[] = [
+            `(?<highlight>\\|-(?<highlightInner>.+?)-\\|)`,
+            `(?<category>\\[[A-Z][A-Z0-9_-]*\\])`,
+        ];
         if (users.length) parts.push(`(?<user>${users.join("|")})`);
         if (perms.length) parts.push(`(?<perm>${perms.join("|")})`);
 
         const out: Segment[] = [];
-        if (parts.length === 0) {
-            pushSplit(out, content, "text");
-            return out;
-        }
-
         const re = new RegExp(parts.join("|"), "g");
         let i = 0;
         for (const m of content.matchAll(re)) {
             if (m.index! > i) pushSplit(out, content.slice(i, m.index), "text");
-            const type = m.groups?.user ? "username" : "permission";
-            pushSplit(out, m[0], type);
+            if (m.groups?.highlight !== undefined) {
+                pushSplit(out, m.groups.highlightInner!, "highlight");
+            } else if (m.groups?.category) {
+                pushSplit(out, m[0], "category");
+            } else if (m.groups?.user) {
+                pushSplit(out, m[0], "username");
+            } else {
+                pushSplit(out, m[0], "permission");
+            }
             i = m.index! + m[0].length;
         }
         if (i < content.length) pushSplit(out, content.slice(i), "text");
@@ -124,6 +135,17 @@
         font-style: normal;
         font-family: var(--font-mono);
         font-size: 0.95em;
+    }
+    .highlight {
+        font-style: normal;
+        font-weight: var(--font-medium);
+        color: var(--blue-400);
+    }
+    .category {
+        font-style: normal;
+        font-family: var(--font-mono);
+        font-size: 0.95em;
+        color: var(--moss-300);
     }
     .text {
         margin-right: 2px;

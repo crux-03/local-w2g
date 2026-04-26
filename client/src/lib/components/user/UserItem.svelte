@@ -12,6 +12,8 @@
     import { userStore } from "$lib/stores/users.svelte";
     import { hasPermission } from "$lib/helpers/permission";
     import { Permissions } from "$lib/api/types";
+    import { stateStore } from "$src/lib/stores/state.svelte";
+    import UserState from "./UserState.svelte";
 
     let { user }: { user: User } = $props();
     let me = $derived(userStore.me);
@@ -21,6 +23,11 @@
         me ? hasPermission(me.permissions, Permissions.MANAGE_USERS) : false,
     );
     let isExpanded = $state(false);
+
+    const readiness = $derived(
+        stateStore.states.find((s) => s.user_id === user.id),
+    );
+    const verdict = $derived(readiness?.verdict);
 
     type PermissionMeta = {
         bit: number;
@@ -71,6 +78,16 @@
 <div class="viewer-card">
     <div class="header">
         <div class="username">
+            {#if verdict}
+                <span
+                    class="orb"
+                    class:ready={verdict === "ready"}
+                    class:partial={verdict === "partial"}
+                    class:not-ready={verdict === "not_ready"}
+                    title={verdict.replace("_", " ")}
+                    aria-hidden="true"
+                ></span>
+            {/if}
             <span class={isSelf ? "me" : ""}
                 >{user.display_name ?? user.id}</span
             >
@@ -91,8 +108,8 @@
     </div>
     {#if isExpanded}
         <div class="details">
-            <h6 class="section-title">Details</h6>
-            boo
+            <h6 class="section-title" style="margin-bottom: var(--space-2)">Details</h6>
+            <UserState userId={user.id} {readiness} />
         </div>
         {#if hasManageUserPerms}
             <div class="permission-section">
@@ -215,5 +232,21 @@
         width: 1.2rem;
         height: 1.2rem;
         flex-shrink: 0;
+    }
+    .orb {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: var(--radius-full);
+        flex-shrink: 0;
+        align-self: center;
+    }
+    .orb.ready {
+        background: var(--color-success);
+    }
+    .orb.partial {
+        background: var(--color-warning);
+    }
+    .orb.not-ready {
+        background: var(--color-danger);
     }
 </style>

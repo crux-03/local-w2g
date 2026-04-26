@@ -30,7 +30,7 @@ impl Command for ResumePlaybackCommand {
             .services()
             .message()
             .system_log(format!(
-                "{} resumed playback",
+                "{} |-resumed-| playback",
                 user.display_name.unwrap_or(user.id.to_string())
             ))
             .await;
@@ -40,6 +40,7 @@ impl Command for ResumePlaybackCommand {
             Effect::Global(ServerMessage::MessageCreated { entry: message }),
         )
         .await?;
+        
         Ok(ServerMessage::Resume.into())
     }
 

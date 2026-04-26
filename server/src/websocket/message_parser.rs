@@ -6,12 +6,18 @@ use crate::{
         download::{DownloadDoneCommand, DownloadProgressCommand},
         messages::{MessageHistoryCommand, SendMessageCommand},
         misc::PingCommand,
-        playback::{PausePlaybackCommand, PlayCommand, ResumePlaybackCommand, SelectVideoCommand},
-        playlist::RequestPlaylistCommand,
+        playback::{
+            PausePlaybackCommand, PlayCommand, ResumePlaybackCommand, SeekCommand,
+            SelectVideoCommand,
+        },
+        playlist::{
+            RequestPlaylistCommand, SetEntryAudioTrackCommand, SetEntryDisplayNameCommand,
+            SetEntrySubtitleTrackCommand, SwapEntriesCommand,
+        },
         resync::{InitiateResyncCommand, SendResyncReportCommand},
         state::{
-            AssertReadyBulkCommand, AssertReadyCommand, ConfirmReadyForPlayCommand,
-            HeartbeatCommand,
+            AssertPendingCommand, AssertReadyBulkCommand, AssertReadyCommand,
+            ConfirmReadyForPlayCommand, HeartbeatCommand,
         },
         user::{EditPermissionCommand, IdentifySelfCommand, ListUsersCommand},
     },
@@ -64,6 +70,9 @@ pub fn parse_client_message(msg: &str) -> anyhow::Result<Box<dyn Command>> {
         ClientMessage::AssertReadyBulk { on_device } => {
             Ok(Box::new(AssertReadyBulkCommand { on_device }))
         }
+        ClientMessage::AssertPending { video_id } => {
+            Ok(Box::new(AssertPendingCommand { video_id }))
+        }
         ClientMessage::Heartbeat => Ok(Box::new(HeartbeatCommand)),
         ClientMessage::ConfirmReadyForPlay { request_id } => {
             Ok(Box::new(ConfirmReadyForPlayCommand { request_id }))
@@ -71,7 +80,32 @@ pub fn parse_client_message(msg: &str) -> anyhow::Result<Box<dyn Command>> {
         ClientMessage::Play => Ok(Box::new(PlayCommand)),
         ClientMessage::RequestPause => Ok(Box::new(PausePlaybackCommand)),
         ClientMessage::RequestResume => Ok(Box::new(ResumePlaybackCommand)),
+        ClientMessage::RequestSeek { timestamp } => Ok(Box::new(SeekCommand { timestamp })),
         ClientMessage::RequestPlaylist => Ok(Box::new(RequestPlaylistCommand)),
         ClientMessage::SelectVideo { video_id } => Ok(Box::new(SelectVideoCommand { video_id })),
+        ClientMessage::SwapEntries { first, second } => {
+            Ok(Box::new(SwapEntriesCommand { first, second }))
+        }
+        ClientMessage::SetAudioTrack {
+            video_id,
+            audio_track,
+        } => Ok(Box::new(SetEntryAudioTrackCommand {
+            video_id,
+            audio_track,
+        })),
+        ClientMessage::SetDisplayName {
+            video_id,
+            display_name,
+        } => Ok(Box::new(SetEntryDisplayNameCommand {
+            video_id,
+            display_name,
+        })),
+        ClientMessage::SetSubtitleTrack {
+            video_id,
+            subtitle_track,
+        } => Ok(Box::new(SetEntrySubtitleTrackCommand {
+            video_id,
+            subtitle_track,
+        })),
     }
 }

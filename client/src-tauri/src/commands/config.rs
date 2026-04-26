@@ -1,4 +1,5 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::{core::AppState, CommandResult};
 
@@ -60,4 +61,15 @@ pub async fn set_mpv_binary(app: AppHandle, path: String) -> CommandResult<()> {
 #[tauri::command]
 pub async fn set_videos_dir(app: AppHandle, path: String) -> CommandResult<()> {
     app.state::<AppState>().set_videos_dir(&app, path).await
+}
+
+#[tauri::command]
+pub async fn password_to_clipboard(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CommandResult<()> {
+    let pw = state.password().lock().await;
+    app.clipboard()
+        .write_text(pw.clone())
+        .map_err(|e| format!("Error when writing to clipboard: {e}"))
 }

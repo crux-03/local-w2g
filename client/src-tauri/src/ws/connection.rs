@@ -1,17 +1,20 @@
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::client_async_tls;
+use tokio_tungstenite::tungstenite::Message;
 
+use crate::core::AppState;
 use crate::error::Error;
 use crate::protocol::ClientMessage;
 
 use super::dispatcher;
 
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(3);
 const RECONNECT_MIN: Duration = Duration::from_secs(1);
 const RECONNECT_MAX: Duration = Duration::from_secs(30);
 
@@ -31,7 +34,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 
 pub fn spawn(url: String, username: String, pw: String, app: AppHandle) -> WsHandle {
-    tracing::info!("entered spawn()");
+    tracing::trace!("entered spawn()");
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(run(url, username, pw, rx, app));
     WsHandle { tx }
@@ -44,14 +47,12 @@ async fn run(
     mut outgoing: mpsc::UnboundedReceiver<ClientMessage>,
     app: AppHandle,
 ) {
-    tracing::info!("Entered run()");
+    tracing::trace!("Entered run()");
     let mut backoff = RECONNECT_MIN;
 
     loop {
-        tracing::info!(%url, "connecting");
+        tracing::trace!(%url, "connecting");
 
-        // Build the request fresh each loop iteration so reconnects
-        // carry the credentials too.
         let request = match build_request(&url, &username, &pw) {
             Ok(r) => r,
             Err(e) => {
@@ -60,7 +61,37 @@ async fn run(
             }
         };
 
-        match connect_async(request).await {
+        // Pull host:port off the request URI so we can open the TCP socket
+        // ourselves and flip TCP_NODELAY before the WS handshake.
+        let uri = request.uri().clone();
+        let host = match uri.host() {
+            Some(h) => h.to_string(),
+            None => {
+                tracing::error!("ws url has no host");
+                return;
+            }
+        };
+        let port = uri.port_u16().unwrap_or_else(|| match uri.scheme_str() {
+            Some("wss") => 443,
+            _ => 80,
+        });
+
+        let tcp = match TcpStream::connect((host.as_str(), port)).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "tcp connect failed");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(RECONNECT_MAX);
+                continue;
+            }
+        };
+
+        if let Err(e) = tcp.set_nodelay(true) {
+            // Not fatal — connection still works, just with the latency penalty.
+            tracing::warn!(error = %e, "failed to set TCP_NODELAY");
+        }
+
+        match client_async_tls(request, tcp).await {
             Ok((ws, _)) => {
                 tracing::info!("connected");
                 backoff = RECONNECT_MIN;
@@ -101,6 +132,7 @@ async fn handle_connection(
     outgoing: &mut mpsc::UnboundedReceiver<ClientMessage>,
     app: &AppHandle,
 ) -> crate::error::Result<()> {
+    let state = app.state::<AppState>();
     tracing::info!("constructing websocket sinks");
     let (mut sink, mut stream) = ws.split();
 
@@ -134,6 +166,8 @@ async fn handle_connection(
 
             _ = heartbeat.tick() => {
                 send_json(&mut sink, &ClientMessage::Heartbeat).await?;
+                state.start_ping().await;
+                send_json(&mut sink, &ClientMessage::Ping).await?;
             }
         }
     }

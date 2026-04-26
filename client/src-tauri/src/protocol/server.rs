@@ -53,8 +53,8 @@ pub enum ServerMessage {
     // Playback
     Play {
         request_id: Snowflake,
-        #[serde(rename = "video_id")]
-        _video_id: Snowflake,
+        track_audio: i32,
+        track_subtitles: i32,
     },
     PlayAborted {
         request_id: Snowflake,
@@ -62,6 +62,9 @@ pub enum ServerMessage {
     },
     Pause,
     Resume,
+    Seek {
+        timestamp: f64,
+    },
 
     // Playlist
     PlaylistUpdated {

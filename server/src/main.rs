@@ -130,10 +130,39 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::spawn(async move { start_widget_demo(Arc::clone(&app_state)).await });
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     tracing::info!("Server starting on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = TcpListener::bind(addr).await?;
+    axum::serve(NoDelayListener(listener), app).await?;
 
     Ok(())
+}
+
+use axum::serve::Listener;
+use tokio::net::{TcpListener, TcpStream};
+
+struct NoDelayListener(TcpListener);
+
+impl Listener for NoDelayListener {
+    type Io = TcpStream;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            match self.0.accept().await {
+                Ok((stream, addr)) => {
+                    let _ = stream.set_nodelay(true);
+                    return (stream, addr);
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "accept failed");
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            }
+        }
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.0.local_addr()
+    }
 }

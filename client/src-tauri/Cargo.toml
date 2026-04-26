@@ -37,4 +37,6 @@ reqwest = { version = "0.13.2", features = ["json"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.23.1", features = ["v4"] }
 futures = "0.3.32"
-
+tauri-plugin-shell = "2"
+matroska = "0.30"
+mp4 = "0.14"

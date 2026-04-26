@@ -30,6 +30,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 128;
 
 /// Events surfaced from mpv. Anything not explicitly enumerated arrives as
 /// `Other(name)` so unknown events don't silently vanish.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Event {
     PropertyChange { name: String, data: Value },
@@ -66,6 +67,7 @@ pub struct MpvManager {
     events_tx: broadcast::Sender<Event>,
 }
 
+#[allow(dead_code)]
 impl MpvManager {
     pub fn new(id: Uuid) -> Self {
         Self::with_socket_name(&format!("w2g-mpv-socket-{id}"))
@@ -314,12 +316,24 @@ impl MpvManager {
 
     // --- Tracks ---
 
-    pub async fn set_subtitle_track(&self, index: u32) -> CommandResult<()> {
-        self.set_property("sid", json!(index)).await
+    pub async fn set_subtitle_track(&self, index: i32) -> CommandResult<()> {
+        if index < 0 {
+            // -1 or lower tells mpv to use its default auto-selection logic
+            self.set_property("sid", json!("auto")).await
+        } else {
+            // Convert 0-based to 1-based
+            self.set_property("sid", json!(index + 1)).await
+        }
     }
 
-    pub async fn set_audio_track(&self, index: u32) -> CommandResult<()> {
-        self.set_property("aid", json!(index)).await
+    pub async fn set_audio_track(&self, index: i32) -> CommandResult<()> {
+        if index < 0 {
+            // -1 or lower tells mpv to use its default auto-selection logic
+            self.set_property("aid", json!("auto")).await
+        } else {
+            // Convert 0-based to 1-based
+            self.set_property("aid", json!(index + 1)).await
+        }
     }
 }
 

@@ -27,6 +27,7 @@ pub enum Verdict {
 /// Wire shape. Verdict is derived at serialize time, never stored.
 #[derive(Serialize, Debug)]
 pub struct UserReadinessView {
+    pub user_id: Snowflake,
     pub videos: HashMap<Snowflake, VideoReadiness>,
     pub verdict: Verdict,
 }

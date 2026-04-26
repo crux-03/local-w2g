@@ -1,7 +1,10 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use tauri::AppHandle;
-use tokio::sync::{broadcast::error::RecvError, Mutex, RwLock};
+use tokio::{
+    sync::{broadcast::error::RecvError, Mutex, RwLock},
+    time::Instant,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -20,6 +23,7 @@ pub struct AppState {
     file_manager: Arc<RwLock<Option<Arc<FileManager>>>>,
     client_id: Arc<Mutex<Option<Snowflake>>>,
     password: Arc<Mutex<String>>,
+    last_ping: Arc<Mutex<Instant>>,
 }
 
 impl AppState {
@@ -32,6 +36,7 @@ impl AppState {
             file_manager: Arc::new(RwLock::new(None)),
             client_id: Arc::new(Mutex::new(None)),
             password: Arc::new(Mutex::new(String::new())),
+            last_ping: Arc::new(Mutex::new(Instant::now())),
         })
     }
 
@@ -61,6 +66,9 @@ impl AppState {
                         widget_id,
                     }) => {
                         widgets.insert(video_id, widget_id);
+                        let _ = state
+                            .ws_send(ClientMessage::AssertPending { video_id })
+                            .await;
                     }
                     Ok(FileEvent::Progress {
                         video_id,
@@ -231,5 +239,13 @@ impl AppState {
         let mut config = self.config().write().await;
         config.videos_directory = vid_dir.into();
         config.save(app)
+    }
+
+    pub async fn start_ping(&self) {
+        *self.last_ping.lock().await = Instant::now();
+    }
+
+    pub async fn sample_ping(&self) -> Instant {
+        *self.last_ping.lock().await
     }
 }

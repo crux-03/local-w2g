@@ -54,3 +54,27 @@ impl Command for AssertReadyBulkCommand {
         Ok(ServerMessage::ReadinessUpdated { readiness: view }.into())
     }
 }
+
+pub struct AssertPendingCommand {
+    pub video_id: Snowflake,
+}
+
+#[async_trait]
+impl Command for AssertPendingCommand {
+    async fn execute(
+        &self,
+        state: Arc<AppState>,
+        user_id: Snowflake,
+    ) -> Result<CommandResult, crate::Error> {
+        let Some(view) = state
+            .services()
+            .state()
+            .assert_pending(user_id, self.video_id)
+            .await
+        else {
+            return Ok(CommandResult::Silent);
+        };
+
+        Ok(ServerMessage::ReadinessUpdated { readiness: view }.into())
+    }
+}

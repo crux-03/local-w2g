@@ -27,11 +27,20 @@ impl Command for ConfirmReadyForPlayCommand {
             .confirm_play(self.request_id, user_id)
             .await
         {
-            HandshakeOutcome::AllConfirmed { video_id } => Ok(ServerMessage::Play {
-                request_id: self.request_id,
-                video_id,
+            HandshakeOutcome::AllConfirmed { video_id } => {
+                let video = state
+                    .services()
+                    .video()
+                    .get_entry(video_id)
+                    .await
+                    .ok_or(crate::Error::InvalidVideo(video_id))?;
+                Ok(ServerMessage::Play {
+                    request_id: __self.request_id,
+                    track_audio: video.audio_track,
+                    track_subtitles: video.subtitle_track,
+                }
+                .into())
             }
-            .into()),
             HandshakeOutcome::Pending | HandshakeOutcome::AlreadyResolved => {
                 Ok(CommandResult::Silent)
             }

@@ -74,6 +74,27 @@ impl StateService {
         Some(self.view_for(user_id).await)
     }
 
+    pub async fn assert_pending(
+        &self,
+        user_id: Snowflake,
+        video_id: Snowflake,
+    ) -> Option<UserReadinessView> {
+        if self.video_service.resolve_path(video_id).await.is_none() {
+            tracing::debug!(%user_id, %video_id, "ignored readiness for unknown video");
+            return None;
+        }
+
+        {
+            let mut states = self.ready_states.write().await;
+            let entry = states.entry(user_id).or_insert_with(|| UserReadiness {
+                videos: HashMap::new(),
+            });
+            entry.videos.insert(video_id, VideoReadiness::Pending);
+        }
+
+        Some(self.view_for(user_id).await)
+    }
+
     pub async fn assert_ready_bulk(
         &self,
         user_id: Snowflake,
@@ -122,7 +143,11 @@ impl StateService {
 
         let verdict = self.compute_verdict(&videos).await;
 
-        UserReadinessView { videos, verdict }
+        UserReadinessView {
+            videos,
+            verdict,
+            user_id,
+        }
     }
 
     async fn compute_verdict(&self, videos: &HashMap<Snowflake, VideoReadiness>) -> Verdict {

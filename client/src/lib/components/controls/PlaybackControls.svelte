@@ -20,8 +20,24 @@
 
     let selected = $derived(playlistStore.selected === undefined);
 
-    async function handleSeekBack() {}
-    async function handleSeekForward() {}
+    async function handleSeekBack() {
+        try {
+            await invoke("seek", {
+                relativeSeconds: -5.0,
+            });
+        } catch (error) {
+            console.log(`Error when seeking (back): ${error}`);
+        }
+    }
+    async function handleSeekForward() {
+        try {
+            await invoke("seek", {
+                relativeSeconds: 5.0,
+            });
+        } catch (error) {
+            console.log(`Error when seeking (forward): ${error}`);
+        }
+    }
     async function handlePlay() {
         try {
             await invoke("resume");
@@ -36,7 +52,13 @@
             console.log(`Error when pausing: ${error}`);
         }
     }
-    async function handleResync() {}
+    async function handleResync() {
+        try {
+            await invoke("resync");
+        } catch (error) {
+            console.log(`Error when pausing: ${error}`);
+        }
+    }
 </script>
 
 {#if hasManagePlaybackPerms}

@@ -59,7 +59,8 @@ pub enum ServerMessage {
     // Playback
     Play {
         request_id: Snowflake,
-        video_id: Snowflake,
+        track_audio: i32,
+        track_subtitles: i32,
     },
     PlayAborted {
         request_id: Snowflake,
@@ -67,6 +68,9 @@ pub enum ServerMessage {
     },
     Pause,
     Resume,
+    Seek {
+        timestamp: f64,
+    },
 
     // Playlist
     PlaylistUpdated {
@@ -123,6 +127,9 @@ pub enum ClientMessage {
     AssertReadyBulk {
         on_device: Vec<Snowflake>,
     },
+    AssertPending {
+        video_id: Snowflake,
+    },
     Heartbeat,
     ConfirmReadyForPlay {
         request_id: Snowflake,
@@ -132,10 +139,29 @@ pub enum ClientMessage {
     Play,
     RequestPause,
     RequestResume,
+    RequestSeek {
+        timestamp: f64,
+    },
 
     // Playlist
     SelectVideo {
         video_id: Snowflake,
     },
     RequestPlaylist,
+    SwapEntries {
+        first: Snowflake,
+        second: Snowflake,
+    },
+    SetDisplayName {
+        video_id: Snowflake,
+        display_name: String
+    },
+    SetAudioTrack {
+        video_id: Snowflake,
+        audio_track: i32
+    },
+    SetSubtitleTrack {
+        video_id: Snowflake,
+        subtitle_track: i32
+    }
 }

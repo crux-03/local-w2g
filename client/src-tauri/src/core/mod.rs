@@ -1,7 +1,9 @@
 mod config;
-mod state;
 mod file_manager;
+mod state;
+mod probe;
 
 pub use config::Config;
-pub use state::AppState;
 pub use file_manager::{FileEvent, FileManager};
+pub use state::AppState;
+pub use probe::*;

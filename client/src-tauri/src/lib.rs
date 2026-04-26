@@ -20,6 +20,7 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -34,6 +35,7 @@ pub fn run() {
             commands::config::load_videos_dir,
             commands::config::set_mpv_binary,
             commands::config::set_videos_dir,
+            commands::config::password_to_clipboard,
             commands::file::init_file_manager,
             commands::file::file_on_device,
             commands::file::load_local_files,
@@ -49,10 +51,17 @@ pub fn run() {
             commands::playback::play,
             commands::playback::resume,
             commands::playback::pause,
+            commands::playback::seek,
             commands::playback::select_video,
+            commands::playback::resync,
             commands::playlist::request_playlist,
+            commands::playlist::swap_entries,
+            commands::playlist::update_entry_display_name,
+            commands::playlist::update_entry_audio_track,
+            commands::playlist::update_entry_subtitle_track,
             commands::upload::upload_video,
-            ws::command::connect
+            ws::command::connect,
+            core::probe_media,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

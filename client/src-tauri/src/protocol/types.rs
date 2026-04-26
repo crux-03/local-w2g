@@ -54,6 +54,7 @@ impl FromStr for Snowflake {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum VideoReadiness {
     OnDevice,
+    Pending,
     NotStarted,
 }
 
@@ -68,6 +69,7 @@ pub enum Verdict {
 /// Wire shape. Verdict is derived at serialize time, never stored.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserReadinessView {
+    pub user_id: Snowflake,
     pub videos: HashMap<Snowflake, VideoReadiness>,
     pub verdict: Verdict,
 }

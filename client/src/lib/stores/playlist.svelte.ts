@@ -68,6 +68,22 @@ export const playlistStore = {
       console.log(`Error when selecting video: ${error}`);
     }
   },
+  async reorder(id: Snowflake, dir: "up" | "down") {
+    const index = entries.findIndex((e) => e.id === id);
+    if (index === -1) return;
+
+    const swapIndex = dir === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= entries.length) return;
+
+    try {
+      await invoke("swap_entries", {
+        first: id,
+        second: entries[swapIndex].id,
+      });
+    } catch (error) {
+      console.log(`Error when reordering video: ${error}`);
+    }
+  },
   isSelected(id: Snowflake): boolean {
     return selected === id;
   },

@@ -1,7 +1,9 @@
 use crate::CommandResult;
 
 #[tauri::command]
-pub async fn pick_file(filters: Option<Vec<(String, Vec<String>)>>) -> CommandResult<Option<String>> {
+pub async fn pick_file(
+    filters: Option<Vec<(String, Vec<String>)>>,
+) -> CommandResult<Option<String>> {
     let task = tokio::task::spawn_blocking(move || {
         let mut dialog = rfd::FileDialog::new();
 

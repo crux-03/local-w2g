@@ -45,6 +45,10 @@ impl VideoService {
         sorted_playlist(&index)
     }
 
+    pub async fn get_entry(&self, id: Snowflake) -> Option<VideoEntry> {
+        self.index.read().await.get(id).cloned()
+    }
+
     pub async fn set_title(
         &self,
         id: Snowflake,
@@ -64,7 +68,7 @@ impl VideoService {
     pub async fn set_audio_track(
         &self,
         id: Snowflake,
-        track_idx: usize,
+        track_idx: i32,
     ) -> Result<VideoEntry, crate::Error> {
         let mut index = self.index.write().await;
         let entry = index.get_mut(id).ok_or(crate::Error::InvalidVideo(id))?;
@@ -80,7 +84,7 @@ impl VideoService {
     pub async fn set_subtitle_track(
         &self,
         id: Snowflake,
-        track_idx: usize,
+        track_idx: i32,
     ) -> Result<VideoEntry, crate::Error> {
         let mut index = self.index.write().await;
         let entry = index.get_mut(id).ok_or(crate::Error::InvalidVideo(id))?;

@@ -15,6 +15,7 @@ listen<User[]>("user_list", (event) => {
 });
 
 listen<[Snowflake, Permissions]>("permission_update", (event) => {
+  console.log(JSON.stringify(event.payload));
   const index = users.findIndex((u) => u.id === event.payload[0]);
   if (index !== -1) {
     users[index].permissions = event.payload[1];

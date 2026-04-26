@@ -76,15 +76,23 @@ export interface VideoReadinessOnDevice {
   status: "on_device";
 }
 
+export interface VideoReadinessPending {
+  status: "pending";
+}
+
 export interface VideoReadinessNotStarted {
   status: "not_started";
 }
 
-export type VideoReadiness = VideoReadinessOnDevice | VideoReadinessNotStarted;
+export type VideoReadiness =
+  | VideoReadinessOnDevice
+  | VideoReadinessPending
+  | VideoReadinessNotStarted;
 
 export type Verdict = "ready" | "partial" | "not_ready";
 
 export interface UserReadinessView {
+  user_id: Snowflake,
   videos: Record<Snowflake, VideoReadiness>;
   verdict: Verdict;
 }

@@ -11,8 +11,9 @@
     import EntryRouter from "$src/lib/components/chat/EntryRouter.svelte";
     import PlaybackControls from "$src/lib/components/controls/PlaybackControls.svelte";
     import Details from "$src/lib/components/Details.svelte";
+    import EditEntryModal from "$src/lib/components/EditEntryModal.svelte";
     import PlaylistItem from "$src/lib/components/PlaylistItem.svelte";
-    import UserItem from "$src/lib/components/UserItem.svelte";
+    import UserItem from "$src/lib/components/user/UserItem.svelte";
     import { hasPermission } from "$src/lib/helpers/permission";
     import { messageStore } from "$src/lib/stores/messages.svelte";
     import { playlistStore } from "$src/lib/stores/playlist.svelte";
@@ -152,6 +153,9 @@
             >
         {/if}
     </aside>
+    
+    <!-- Modals -->
+    <EditEntryModal />
 </main>
 
 <style>
