@@ -1,0 +1,377 @@
+/* ============================================================================
+   components.css
+   Standard desktop-app components. Keep imports ordered:
+       @import "variables.css";
+       @import "components.css";
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   BASE
+   ---------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ----------------------------------------------------------------------------
+   TYPOGRAPHY
+   ---------------------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    margin: 0 0 var(--space-3);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+}
+
+h1 {
+    font-size: var(--text-3xl);
+}
+h2 {
+    font-size: var(--text-2xl);
+}
+h3 {
+    font-size: var(--text-xl);
+}
+h4 {
+    font-size: var(--text-lg);
+}
+h5 {
+    font-size: var(--text-base);
+}
+
+h6 {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+p {
+    margin: 0 0 var(--space-4);
+}
+
+p:last-child {
+    margin-bottom: 0;
+}
+
+small,
+.text-small {
+    font-size: var(--text-sm);
+}
+
+.text-muted {
+    color: var(--color-text-muted);
+}
+
+.text-subtle {
+    color: var(--color-text-subtle);
+}
+
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+
+a:hover {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+a:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-focus);
+}
+
+code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    padding: 0.1em 0.35em;
+    background: var(--color-bg-subtle);
+    border-radius: var(--radius-sm);
+}
+
+/* ----------------------------------------------------------------------------
+   BUTTONS
+   Usage: <button class="btn btn-primary">Label</button>
+   ---------------------------------------------------------------------------- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    line-height: 1.2;
+    color: var(--color-text);
+    background: transparent;
+    border: var(--border-thin) solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    user-select: none;
+    transition:
+        background-color var(--duration-fast) var(--ease-out),
+        border-color var(--duration-fast) var(--ease-out),
+        color var(--duration-fast) var(--ease-out);
+}
+
+.btn:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Primary — filled sage */
+.btn-primary {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+    border-color: var(--color-accent);
+}
+.btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+}
+.btn-primary:active:not(:disabled) {
+    background: var(--color-accent-active);
+    border-color: var(--color-accent-active);
+}
+
+/* Secondary — outlined */
+.btn-secondary {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+.btn-secondary:hover:not(:disabled) {
+    background: var(--color-bg-subtle);
+    border-color: var(--color-border-strong);
+}
+.btn-secondary:active:not(:disabled) {
+    background: var(--color-accent-subtle);
+}
+
+/* Ghost — no chrome until hover */
+.btn-ghost:hover:not(:disabled) {
+    background: var(--color-bg-subtle);
+}
+.btn-ghost:active:not(:disabled) {
+    background: var(--color-accent-subtle);
+}
+
+/* Danger — for destructive actions */
+.btn-danger {
+    background: var(--color-danger);
+    color: #ffffff;
+    border-color: var(--color-danger);
+}
+.btn-danger:hover:not(:disabled) {
+    filter: brightness(0.95);
+}
+.btn-danger:active:not(:disabled) {
+    filter: brightness(0.9);
+}
+
+/* ----------------------------------------------------------------------------
+   FORM CONTROLS
+   ---------------------------------------------------------------------------- */
+
+.label {
+    display: block;
+    margin-bottom: var(--space-1);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+}
+
+.input,
+.textarea,
+.select {
+    display: block;
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: var(--border-thin) solid var(--color-border);
+    border-radius: var(--radius-md);
+    transition:
+        border-color var(--duration-fast) var(--ease-out),
+        box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+    color: var(--color-text-subtle);
+}
+
+.input:hover:not(:disabled):not(:focus),
+.textarea:hover:not(:disabled):not(:focus),
+.select:hover:not(:disabled):not(:focus) {
+    border-color: var(--color-border-strong);
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-focus);
+}
+
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+}
+
+.textarea {
+    min-height: 80px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+/* Select — custom chevron, muted gray reads on both themes */
+.select {
+    appearance: none;
+    padding-right: var(--space-8);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path fill='none' stroke='%2382817a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M3 5l3 3 3-3'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right var(--space-3) center;
+    background-size: 12px;
+}
+
+/* Checkbox & radio */
+.checkbox,
+.radio {
+    appearance: none;
+    position: relative;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    vertical-align: middle;
+    background: var(--color-surface);
+    border: var(--border-thin) solid var(--color-border-strong);
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast) var(--ease-out),
+        border-color var(--duration-fast) var(--ease-out);
+}
+
+.checkbox {
+    border-radius: var(--radius-sm);
+}
+.radio {
+    border-radius: var(--radius-full);
+}
+
+.checkbox:hover:not(:disabled),
+.radio:hover:not(:disabled) {
+    border-color: var(--color-accent);
+}
+
+.checkbox:checked,
+.radio:checked {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.checkbox:checked::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 5px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--color-accent-fg);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.radio:checked::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-accent-fg);
+}
+
+.checkbox:focus-visible,
+.radio:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
+.checkbox:disabled,
+.radio:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ----------------------------------------------------------------------------
+   SURFACES
+   ---------------------------------------------------------------------------- */
+
+.card {
+    padding: var(--space-5);
+    background: var(--color-surface);
+    border: var(--border-thin) solid var(--color-border);
+    border-radius: var(--radius-lg);
+}
+
+.card-raised {
+    padding: var(--space-5);
+    background: var(--color-surface-raised);
+    border: var(--border-thin) solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.divider {
+    margin: var(--space-4) 0;
+    height: 1px;
+    background: var(--color-divider);
+    border: 0;
+}

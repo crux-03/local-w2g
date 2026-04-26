@@ -1,172 +1,186 @@
 <script lang="ts">
-    import { createEventDispatcher } from "svelte";
+    import type { VideoEntry } from "$lib/api/video";
+    import {
+        ChevronDown,
+        ChevronUp,
+        Download,
+        ListVideo,
+        Pencil,
+    } from "@lucide/svelte";
+    import { userStore } from "$lib/stores/users.svelte";
+    import { hasPermission } from "$lib/helpers/permission";
+    import { Permissions } from "$lib/api/types";
+    import { playlistStore } from "$lib/stores/playlist.svelte";
+    import { invoke } from "@tauri-apps/api/core";
+    import type { MediaProbe } from "$lib/api/media";
+    import { editStore } from "../stores/edit.svelte";
 
-    // svelte-ignore export_let_unused
-    export let videoId: string;
-    export let filename: string;
-    export let size: string;
-    export let isCurrent: boolean = false;
-    export let isDownloaded: boolean = false;
-    export let isDownloading: boolean = false;
-    export let downloadProgress: number = 0; // 0-100
+    let { entry }: { entry: VideoEntry } = $props();
+    let me = $derived(userStore.me);
 
-    const dispatch = createEventDispatcher();
+    const isFirst = $derived(entry.order === 0);
+    const isLast = $derived(playlistStore.isLastItem(entry.id));
+    const isSelected = $derived(playlistStore.isSelected(entry.id));
 
-    function handleClick() {
-        dispatch("play");
+    const isDownloaded = $derived(playlistStore.fileOnDevice(entry.id));
+    const hasManageMediaPerms = $derived(
+        me ? hasPermission(me.permissions, Permissions.MANAGE_MEDIA) : false,
+    );
+
+    async function handleDownload() {
+        try {
+            await invoke("download_file", {
+                videoId: entry.id,
+                displayName: entry.display_name,
+            });
+        } catch (error) {
+            console.log(`Error when downloading: ${error}`);
+        }
+    }
+
+    async function selectVideo() {
+        await playlistStore.selectVideo(entry.id);
+    }
+
+    async function handleReorder(direction: "up" | "down") {
+        await playlistStore.reorder(entry.id, direction);
+    }
+
+    async function handleEdit() {
+        try {
+            const probe = await invoke<MediaProbe>("probe_media", {
+                id: entry.id,
+            });
+            editStore.open(entry, probe);
+        } catch (e) {
+            console.error("Failed to probe media:", e);
+        }
     }
 </script>
 
-<button
-    class="playlist-item"
-    class:current={isCurrent}
-    class:downloaded={isDownloaded}
-    class:downloading={isDownloading}
-    onclick={handleClick}
-    style="--progress: {downloadProgress}%"
->
-    <div class="progress-bar"></div>
-    <div class="content">
-        <div class="item-header">
-            <span class="file-name">{filename}</span>
-            {#if isDownloading}
-                <span class="status-badge downloading">
-                    ⏳ {downloadProgress}%
-                </span>
-            {:else if isDownloaded}
-                <span class="status-badge downloaded">✓ Ready</span>
-            {:else}
-                <span class="status-badge pending">⬇ Download</span>
+<div class="card {isSelected ? 'selected' : ''}">
+    <div class="body">
+        <span
+            class="display_name {isSelected ? 'selected' : ''}"
+            title={String(entry.display_name)}>{entry.display_name}</span
+        >
+
+        {#if hasManageMediaPerms}
+            <button class="btn btn-ghost util-btn" onclick={handleEdit}
+                ><Pencil /></button
+            >
+        {:else if !isDownloaded}
+            <button
+                class="btn btn-download util-btn align-end"
+                onclick={handleDownload}><Download /></button
+            >
+        {/if}
+    </div>
+
+    {#if hasManageMediaPerms}
+        <div class="toolbar">
+            <button
+                class="btn btn-ghost util-btn"
+                onclick={async () => await handleReorder("up")}
+                disabled={isFirst}><ChevronUp /></button
+            >
+            <button
+                class="btn btn-ghost util-btn"
+                onclick={async () => await handleReorder("down")}
+                disabled={isLast}><ChevronDown /></button
+            >
+            {#if !isSelected}
+                <button
+                    class="btn btn-select util-btn align-end"
+                    onclick={selectVideo}><ListVideo /></button
+                >
+            {/if}
+            {#if !isDownloaded}
+                <button
+                    class="btn btn-download util-btn {isSelected
+                        ? 'align-end'
+                        : ''}"
+                    onclick={handleDownload}><Download /></button
+                >
             {/if}
         </div>
-        <span class="file-size">{size}</span>
-    </div>
-</button>
+    {/if}
+</div>
 
 <style>
-    .playlist-item {
-        position: relative;
+    .card {
         display: flex;
         flex-direction: column;
-        gap: 0.375rem;
-        padding: 0.75rem;
         width: 100%;
-        text-align: left;
-        background-color: var(--bg-tertiary);
-        border: 2px solid var(--border-color);
-        border-radius: 4px;
-        margin-bottom: 0.5rem;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-family: inherit;
-        color: inherit;
-        overflow: hidden;
-    }
-
-    .progress-bar {
-        position: absolute;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: var(--progress);
-        background: linear-gradient(
-            90deg,
-            rgba(33, 150, 243, 0.15) 0%,
-            rgba(33, 150, 243, 0.25) 100%
-        );
-        transition: width 0.3s ease;
-        z-index: 0;
-    }
-
-    .content {
-        position: relative;
-        z-index: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 0.375rem;
-    }
-
-    .playlist-item:hover:not(.downloading) {
-        border-color: var(--accent-blue);
-        background-color: var(--bg-secondary);
-        transform: translateY(-1px);
-    }
-
-    .playlist-item:active:not(.downloading) {
-        transform: translateY(0);
-    }
-
-    .playlist-item.current {
-        border-color: var(--accent-green);
-        background-color: rgba(76, 175, 80, 0.1);
-    }
-
-    .playlist-item.current .progress-bar {
-        background: linear-gradient(
-            90deg,
-            rgba(76, 175, 80, 0.15) 0%,
-            rgba(76, 175, 80, 0.25) 100%
-        );
-    }
-
-    .playlist-item.downloading {
-        opacity: 0.95;
-        cursor: wait;
-        border-color: var(--accent-blue);
-    }
-
-    .playlist-item.downloading .progress-bar {
-        background: linear-gradient(
-            90deg,
-            rgba(33, 150, 243, 0.3) 0%,
-            rgba(33, 150, 243, 0.4) 100%
-        );
-    }
-
-    .item-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .file-name {
-        font-size: 0.875rem;
-        font-weight: 500;
-        flex: 1;
         min-width: 0;
+        padding: var(--space-2) var(--space-4);
+        border-radius: var(--radius-md);
+    }
+    .card.selected {
+        background-color: var(--jade-500);
+    }
+    .body {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-1) 0px;
+        min-height: 3em;
+    }
+    .display_name {
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
     }
-
-    .file-size {
-        font-size: 0.75rem;
-        color: var(--text-secondary);
+    .display_name.selected {
+        color: var(--twilight-200);
+        font-weight: bold;
     }
-
-    .status-badge {
-        font-size: 0.7rem;
-        padding: 0.25rem 0.6rem;
-        border-radius: 12px;
-        font-weight: 600;
-        white-space: nowrap;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+    .toolbar {
+        display: flex;
+        flex-direction: row;
+        border-top: var(--border-thin) solid var(--color-border);
+        gap: var(--space-1);
+        padding: var(--space-1) 0px;
     }
-
-    .status-badge.downloaded {
-        background-color: #1b5e20;
-        color: #4caf50;
+    .util-btn {
+        max-width: 3em;
     }
-
-    .status-badge.pending {
-        background-color: #1565c0;
-        color: #90caf9;
+    .util-btn > :global(svg) {
+        width: 1.2rem;
+        height: 1.2rem;
+        flex-shrink: 0;
     }
-
-    .status-badge.downloading {
-        background-color: #e65100;
-        color: #ffb74d;
+    .align-end {
+        margin-left: auto;
+    }
+    .btn-download {
+        position: relative;
+        overflow: hidden;
+        background-color: var(--sage-500);
+    }
+    .btn-download:hover {
+        background-color: var(--sage-600);
+    }
+    .btn-download::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: calc(var(--progress, 0) * 100%);
+        background-color: var(--sage-700); /* darker shade of the same hue */
+        transition: width 150ms linear;
+    }
+    .btn-download > :global(svg) {
+        position: relative; /* keep the icon above the fill */
+    }
+    .btn-select {
+        position: relative;
+        overflow: hidden;
+        background-color: var(--twilight-400);
+    }
+    .btn-select:hover {
+        background-color: var(--twilight-500);
     }
 </style>

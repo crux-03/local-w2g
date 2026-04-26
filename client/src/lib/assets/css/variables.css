@@ -1,0 +1,367 @@
+/* ============================================================================
+   variables.css
+   Design tokens for a small desktop app.
+   Color palette inspired by "Frieren: Beyond Journey's End" —
+   soft sage, silver, parchment, and twilight lavender.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   FONT IMPORTS
+   Variable fonts from Fontsource. Resolved by the bundler (Vite/Webpack/etc.).
+   Swap any @import line to try an alternate, then update --font-* below.
+   ---------------------------------------------------------------------------- */
+
+/* Active picks */
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/geist-mono";
+
+/* Alternates — uncomment to try, and update --font-* tokens to match.
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/eb-garamond";
+@import "@fontsource-variable/literata";
+@import "@fontsource-variable/lora";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/fira-code";
+*/
+
+:root {
+    /* ------------------------------------------------------------------------
+     COLOR PRIMITIVES
+     Raw palette values. Prefer the semantic tokens below in components.
+     ------------------------------------------------------------------------ */
+
+    /* Sage — Frieren's eyes, forest canopies */
+    --sage-50: #f1f5f0;
+    --sage-100: #dfe8dc;
+    --sage-200: #c2d3bc;
+    --sage-300: #9fb897;
+    --sage-400: #7a9c72;
+    --sage-500: #5a7e54;
+    --sage-600: #456540;
+    --sage-700: #354e33;
+
+    /* Silver — her hair, misty mornings */
+    --silver-50: #fafafa;
+    --silver-100: #f2f2f0;
+    --silver-200: #e3e3df;
+    --silver-300: #cac9c2;
+    --silver-400: #a8a7a0;
+    --silver-500: #82817a;
+    --silver-600: #5c5b56;
+    --silver-700: #3d3c38;
+
+    /* Parchment — old spellbooks, warm light through windows */
+    --parchment-50: #fbf7ee;
+    --parchment-100: #f6eed9;
+    --parchment-200: #ecdeb8;
+    --parchment-300: #dcc58a;
+    --parchment-400: #c4a65e;
+
+    /* Twilight — dusk skies on the journey north */
+    --twilight-100: #e7e3ef;
+    --twilight-200: #c9c2d8;
+    --twilight-300: #a397b8;
+    --twilight-400: #7d6e97;
+    --twilight-500: #574a72;
+
+    /* Ember — magic glow, sunset through trees */
+    --ember-300: #e8b87a;
+    --ember-400: #d49a52;
+    --ember-500: #b77c34;
+
+    /* Functional */
+    --red-400: #c26b66;
+    --amber-400: #d4a24a;
+    --green-400: #6b9a5e;
+    --blue-400: #6b8aa8;
+
+    /* ------------------------------------------------------------------------
+     SEMANTIC COLORS — LIGHT THEME (default)
+     ------------------------------------------------------------------------ */
+
+    /* Surfaces */
+    --color-bg: var(--parchment-50);
+    --color-bg-subtle: var(--silver-100);
+    --color-surface: #ffffff;
+    --color-surface-raised: #ffffff;
+    --color-overlay: rgba(61, 60, 56, 0.48);
+
+    /* Text */
+    --color-text: var(--silver-700);
+    --color-text-muted: var(--silver-500);
+    --color-text-subtle: var(--silver-400);
+    --color-text-inverse: var(--parchment-50);
+
+    /* Borders & dividers */
+    --color-border: var(--silver-200);
+    --color-border-strong: var(--silver-300);
+    --color-divider: var(--silver-100);
+
+    /* Accent — Frieren's eyes */
+    --color-accent: var(--sage-500);
+    --color-accent-hover: var(--sage-600);
+    --color-accent-active: var(--sage-700);
+    --color-accent-subtle: var(--sage-100);
+    --color-accent-fg: #ffffff;
+
+    /* Secondary accent — twilight */
+    --color-secondary: var(--twilight-400);
+    --color-secondary-hover: var(--twilight-500);
+    --color-secondary-subtle: var(--twilight-100);
+
+    /* Focus ring */
+    --color-focus-ring: var(--sage-300);
+
+    /* Status */
+    --color-success: var(--green-400);
+    --color-warning: var(--amber-400);
+    --color-danger: var(--red-400);
+    --color-info: var(--blue-400);
+
+    /* ------------------------------------------------------------------------
+     TYPOGRAPHY
+     ------------------------------------------------------------------------ */
+
+    --font-sans:
+        "Plus Jakarta Sans Variable", -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-serif: "Fraunces Variable", "Iowan Old Style", Georgia, serif;
+    --font-mono: "Geist Mono Variable", "SF Mono", Menlo, Consolas, monospace;
+
+    /* Alternate font-family values — paste over the lines above to swap:
+     --font-sans:  "Manrope Variable", ...     (clean, slightly warmer)
+     --font-sans:  "Nunito Variable", ...      (soft, rounded — most Frieren-ish)
+     --font-sans:  "DM Sans Variable", ...     (geometric, friendly)
+     --font-sans:  "Figtree Variable", ...     (modern, neutral)
+     --font-serif: "EB Garamond Variable", ... (classic elegant spellbook)
+     --font-serif: "Literata Variable", ...    (bookish, very readable)
+     --font-serif: "Lora Variable", ...        (calligraphic warmth)
+     --font-mono:  "JetBrains Mono Variable", ...
+     --font-mono:  "Fira Code Variable", ...
+  */
+
+    /* Type scale — 1.200 minor third, sized for desktop reading */
+    --text-xs: 0.75rem; /* 12px */
+    --text-sm: 0.875rem; /* 14px */
+    --text-base: 1rem; /* 16px */
+    --text-lg: 1.125rem; /* 18px */
+    --text-xl: 1.25rem; /* 20px */
+    --text-2xl: 1.5rem; /* 24px */
+    --text-3xl: 1.875rem; /* 30px */
+    --text-4xl: 2.25rem; /* 36px */
+
+    /* Weights */
+    --font-regular: 400;
+    --font-medium: 500;
+    --font-semibold: 600;
+    --font-bold: 700;
+
+    /* Line heights */
+    --leading-tight: 1.2;
+    --leading-snug: 1.35;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.7;
+
+    /* Letter spacing */
+    --tracking-tight: -0.01em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.04em;
+
+    /* ------------------------------------------------------------------------
+     SPACING — 4px base, used for margin, padding, gap
+     ------------------------------------------------------------------------ */
+
+    --space-0: 0;
+    --space-1: 0.25rem; /*  4px */
+    --space-2: 0.5rem; /*  8px */
+    --space-3: 0.75rem; /* 12px */
+    --space-4: 1rem; /* 16px */
+    --space-5: 1.25rem; /* 20px */
+    --space-6: 1.5rem; /* 24px */
+    --space-8: 2rem; /* 32px */
+    --space-10: 2.5rem; /* 40px */
+    --space-12: 3rem; /* 48px */
+    --space-16: 4rem; /* 64px */
+    --space-20: 5rem; /* 80px */
+
+    /* ------------------------------------------------------------------------
+     RADIUS
+     ------------------------------------------------------------------------ */
+
+    --radius-none: 0;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --radius-xl: 16px;
+    --radius-full: 9999px;
+
+    /* ------------------------------------------------------------------------
+     BORDERS
+     ------------------------------------------------------------------------ */
+
+    --border-thin: 1px;
+    --border-medium: 2px;
+    --border-thick: 3px;
+
+    /* ------------------------------------------------------------------------
+     SHADOWS — soft, diffuse, like morning light
+     ------------------------------------------------------------------------ */
+
+    --shadow-xs: 0 1px 2px rgba(61, 60, 56, 0.05);
+    --shadow-sm:
+        0 1px 3px rgba(61, 60, 56, 0.08), 0 1px 2px rgba(61, 60, 56, 0.04);
+    --shadow-md:
+        0 4px 10px rgba(61, 60, 56, 0.08), 0 2px 4px rgba(61, 60, 56, 0.04);
+    --shadow-lg:
+        0 10px 24px rgba(61, 60, 56, 0.1), 0 4px 8px rgba(61, 60, 56, 0.04);
+    --shadow-xl: 0 20px 40px rgba(61, 60, 56, 0.12);
+
+    /* Focus ring shadow */
+    --shadow-focus: 0 0 0 3px rgba(159, 184, 151, 0.4);
+
+    /* ------------------------------------------------------------------------
+     TEXT SHADOWS
+     Separate from box-shadows: text-shadow uses offset-x offset-y blur color
+     (no spread, no inset). Tuned with higher opacity since text strokes are
+     thin and need more contrast to register.
+     ------------------------------------------------------------------------ */
+
+    /* Subtle lift — headings on light backgrounds */
+    --text-shadow-sm: 0 1px 1px rgba(61, 60, 56, 0.15);
+
+    /* Standard depth — display text, titles */
+    --text-shadow-md: 0 1px 2px rgba(61, 60, 56, 0.22);
+
+    /* Pronounced — hero text, splash screens */
+    --text-shadow-lg: 0 2px 4px rgba(61, 60, 56, 0.28);
+
+    /* Soft sage glow — magical accents, spell names */
+    --text-shadow-glow: 0 0 8px rgba(122, 156, 114, 0.45);
+
+    /* Warm ember glow — highlights, call-to-action text */
+    --text-shadow-ember: 0 0 10px rgba(212, 154, 82, 0.4);
+
+    /* Crisp emboss — layered offset + blur for a carved-into-stone feel */
+    --text-shadow-emboss:
+        0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 3px rgba(61, 60, 56, 0.25);
+
+    /* ------------------------------------------------------------------------
+     MOTION
+     ------------------------------------------------------------------------ */
+
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+    --duration-fast: 120ms;
+    --duration-normal: 200ms;
+    --duration-slow: 320ms;
+
+    /* ------------------------------------------------------------------------
+     LAYOUT
+     ------------------------------------------------------------------------ */
+
+    --sidebar-width: 240px;
+    --sidebar-width-sm: 64px;
+    --titlebar-height: 36px;
+    --toolbar-height: 44px;
+    --statusbar-height: 28px;
+    --content-max-width: 960px;
+
+    /* ------------------------------------------------------------------------
+     Z-INDEX SCALE
+     ------------------------------------------------------------------------ */
+
+    --z-base: 0;
+    --z-dropdown: 100;
+    --z-sticky: 200;
+    --z-overlay: 300;
+    --z-modal: 400;
+    --z-popover: 500;
+    --z-tooltip: 600;
+    --z-toast: 700;
+}
+
+/* ============================================================================
+   DARK THEME — twilight on the road, lamplight through paper screens
+   Opt in with <html data-theme="dark"> or prefers-color-scheme.
+   ============================================================================ */
+
+[data-theme="dark"] {
+    --color-bg: #1e1d22;
+    --color-bg-subtle: #26252b;
+    --color-surface: #2a2930;
+    --color-surface-raised: #32313a;
+    --color-overlay: rgba(10, 10, 12, 0.6);
+
+    --color-text: #e8e6de;
+    --color-text-muted: #a8a69c;
+    --color-text-subtle: #6e6c64;
+    --color-text-inverse: #1e1d22;
+
+    --color-border: #3a3942;
+    --color-border-strong: #4a4954;
+    --color-divider: #2f2e35;
+
+    --color-accent: var(--sage-500);
+    --color-accent-hover: var(--sage-400);
+    --color-accent-active: var(--sage-600);
+    --color-accent-subtle: rgba(159, 184, 151, 0.14);
+    --color-accent-fg: #ffffff;
+
+    --color-secondary: var(--twilight-300);
+    --color-secondary-hover: var(--twilight-200);
+    --color-secondary-subtle: rgba(163, 151, 184, 0.12);
+
+    --color-focus-ring: var(--sage-300);
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.55);
+
+    --shadow-focus: 0 0 0 3px rgba(159, 184, 151, 0.35);
+
+    /* Text shadows — darker base since we're on a dark surface */
+    --text-shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.5);
+    --text-shadow-md: 0 1px 2px rgba(0, 0, 0, 0.6);
+    --text-shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.7);
+    --text-shadow-glow: 0 0 10px rgba(159, 184, 151, 0.55);
+    --text-shadow-ember: 0 0 12px rgba(232, 184, 122, 0.5);
+    --text-shadow-emboss:
+        0 -1px 0 rgba(0, 0, 0, 0.5), 0 1px 1px rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --color-bg: #1e1d22;
+        --color-bg-subtle: #26252b;
+        --color-surface: #2a2930;
+        --color-surface-raised: #32313a;
+        --color-overlay: rgba(10, 10, 12, 0.6);
+
+        --color-text: #e8e6de;
+        --color-text-muted: #a8a69c;
+        --color-text-subtle: #6e6c64;
+        --color-text-inverse: #1e1d22;
+
+        --color-border: #3a3942;
+        --color-border-strong: #4a4954;
+        --color-divider: #2f2e35;
+
+        --color-accent: var(--sage-500);
+        --color-accent-hover: var(--sage-400);
+        --color-accent-active: var(--sage-600);
+        --color-accent-subtle: rgba(159, 184, 151, 0.14);
+        --color-accent-fg: #ffffff;
+
+        --color-secondary: var(--twilight-300);
+        --color-secondary-hover: var(--twilight-200);
+        --color-secondary-subtle: rgba(163, 151, 184, 0.12);
+    }
+}

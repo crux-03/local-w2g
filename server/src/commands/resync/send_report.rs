@@ -1,0 +1,48 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::{
+    Snowflake,
+    commands::{Command, CommandResult},
+    core::AppState,
+    services::permissions::Permissions,
+    websocket::ServerMessage,
+};
+
+pub struct SendResyncReportCommand {
+    pub state_id: Snowflake,
+    pub timestamp: f64,
+}
+
+#[async_trait]
+impl Command for SendResyncReportCommand {
+    async fn execute(
+        &self,
+        state: Arc<AppState>,
+        user_id: Snowflake,
+    ) -> Result<CommandResult, crate::Error> {
+        let completed = state
+            .services()
+            .playback()
+            .resync_report(self.state_id, user_id, self.timestamp)
+            .await?;
+
+        if completed {
+            let collapsed = state
+                .services()
+                .playback()
+                .collapse_resync(self.state_id)
+                .await?;
+            return Ok(ServerMessage::CommitResync {
+                timestamp: collapsed.timestamp,
+            }.into());
+        }
+
+        Ok(CommandResult::Silent)
+    }
+
+    fn required_permission(&self) -> Option<Permissions> {
+        Some(Permissions::SEND_STATE)
+    }
+}

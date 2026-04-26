@@ -1,22 +1,21 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "local-w2g-client",
-  "version": "0.0.4",
+  "productName": "client",
+  "version": "0.1.0",
   "identifier": "com.crux.w2g-client",
   "build": {
-    "beforeDevCommand": "deno task dev",
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "deno task build",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../build"
   },
   "app": {
     "windows": [
       {
-        "title": "MPV Sync",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 1200,
-        "minHeight": 800
+        "title": "Watch2Gether",
+        "width": 800,
+        "height": 600,
+        "decorations": false
       }
     ],
     "security": {
@@ -32,6 +31,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "externalBin": ["binaries/ffprobe"]
   }
 }
