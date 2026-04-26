@@ -1,6 +1,6 @@
 use tauri::{AppHandle, State};
 
-use crate::core::AppState;
+use crate::{core::AppState, ws::connection::ConnectError};
 
 fn format_url(base_url: String) -> String {
     if base_url.starts_with("ws://") || base_url.starts_with("wss://") {
@@ -35,7 +35,10 @@ pub async fn connect(
         .inspect_err(|e| tracing::error!(%e, "connection failed"))?;
 
     let ws_url = format_url(server_url);
-    let handle = super::spawn(ws_url, username, server_pw, app);
+    let (handle, ready) = super::spawn(ws_url, username, server_pw, app);
+    let _ = ready
+        .await
+        .map_err(|_| ConnectError::TaskDied.to_string())?;
     state.set_ws_handle(handle).await;
 
     tracing::info!("WebSocket connected");

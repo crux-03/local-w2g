@@ -1,11 +1,12 @@
 use std::time::Duration;
 
+use futures::channel::oneshot;
 use futures_util::{SinkExt, StreamExt};
 use tauri::{AppHandle, Manager};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
-use tokio_tungstenite::client_async_tls;
+use tokio_tungstenite::{client_async_tls, tungstenite};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::core::AppState;
@@ -33,11 +34,30 @@ impl WsHandle {
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 
-pub fn spawn(url: String, username: String, pw: String, app: AppHandle) -> WsHandle {
-    tracing::trace!("entered spawn()");
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectError {
+    #[error("invalid request: {0}")]
+    BuildRequest(String),
+    #[error("authentication rejected (status {0})")]
+    Auth(u16),
+    #[error("tcp connect failed: {0}")]
+    Tcp(String),
+    #[error("websocket handshake failed: {0}")]
+    Handshake(String),
+    #[error("connect task died before signaling readiness")]
+    TaskDied,
+}
+
+pub fn spawn(
+    url: String,
+    username: String,
+    pw: String,
+    app: AppHandle,
+) -> (WsHandle, oneshot::Receiver<Result<(), ConnectError>>) {
     let (tx, rx) = mpsc::unbounded_channel();
-    tokio::spawn(run(url, username, pw, rx, app));
-    WsHandle { tx }
+    let (ready_tx, ready_rx) = oneshot::channel();
+    tokio::spawn(run(url, username, pw, rx, app, Some(ready_tx)));
+    (WsHandle { tx }, ready_rx)
 }
 
 async fn run(
@@ -46,28 +66,34 @@ async fn run(
     pw: String,
     mut outgoing: mpsc::UnboundedReceiver<ClientMessage>,
     app: AppHandle,
+    mut ready: Option<oneshot::Sender<Result<(), ConnectError>>>,
 ) {
-    tracing::trace!("Entered run()");
+    tracing::trace!("entered run()");
     let mut backoff = RECONNECT_MIN;
 
     loop {
         tracing::trace!(%url, "connecting");
 
+        // --- build request ---------------------------------------------------
         let request = match build_request(&url, &username, &pw) {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!(error = %e, "failed to build ws request");
-                return;
+                if let Some(tx) = ready.take() {
+                    let _ = tx.send(Err(ConnectError::BuildRequest(e.to_string())));
+                }
+                return; // bad input — never retryable
             }
         };
 
-        // Pull host:port off the request URI so we can open the TCP socket
-        // ourselves and flip TCP_NODELAY before the WS handshake.
         let uri = request.uri().clone();
         let host = match uri.host() {
             Some(h) => h.to_string(),
             None => {
                 tracing::error!("ws url has no host");
+                if let Some(tx) = ready.take() {
+                    let _ = tx.send(Err(ConnectError::BuildRequest("url has no host".into())));
+                }
                 return;
             }
         };
@@ -76,10 +102,17 @@ async fn run(
             _ => 80,
         });
 
+        // --- tcp connect -----------------------------------------------------
         let tcp = match TcpStream::connect((host.as_str(), port)).await {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!(error = %e, "tcp connect failed");
+                // First attempt: surface the error to the UI immediately rather
+                // than silently retrying — a wrong URL shouldn't look like a hang.
+                if let Some(tx) = ready.take() {
+                    let _ = tx.send(Err(ConnectError::Tcp(e.to_string())));
+                    return;
+                }
                 tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(RECONNECT_MAX);
                 continue;
@@ -87,20 +120,46 @@ async fn run(
         };
 
         if let Err(e) = tcp.set_nodelay(true) {
-            // Not fatal — connection still works, just with the latency penalty.
             tracing::warn!(error = %e, "failed to set TCP_NODELAY");
         }
 
+        // --- ws handshake ----------------------------------------------------
         match client_async_tls(request, tcp).await {
             Ok((ws, _)) => {
                 tracing::info!("connected");
                 backoff = RECONNECT_MIN;
+
+                // First successful handshake: unblock the frontend.
+                if let Some(tx) = ready.take() {
+                    let _ = tx.send(Ok(()));
+                }
+
                 match handle_connection(ws, &mut outgoing, &app).await {
                     Ok(()) => tracing::info!("connection closed cleanly"),
                     Err(e) => tracing::warn!(error = %e, "connection lost"),
                 }
             }
-            Err(e) => tracing::warn!(error = %e, "connect failed"),
+            Err(e) => {
+                // 401/403 means the credentials are wrong — looping won't help.
+                if let tungstenite::Error::Http(resp) = &e {
+                    let status = resp.status().as_u16();
+                    if matches!(status, 401 | 403) {
+                        tracing::error!(%status, "authentication rejected");
+                        if let Some(tx) = ready.take() {
+                            let _ = tx.send(Err(ConnectError::Auth(status)));
+                        }
+                        return;
+                    }
+                }
+
+                tracing::warn!(error = %e, "handshake failed");
+                if let Some(tx) = ready.take() {
+                    // First attempt failed before we ever connected — bail out
+                    // rather than retry behind the user's back.
+                    let _ = tx.send(Err(ConnectError::Handshake(e.to_string())));
+                    return;
+                }
+            }
         }
 
         tokio::time::sleep(backoff).await;

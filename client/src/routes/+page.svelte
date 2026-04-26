@@ -4,6 +4,8 @@
     import { goto } from "$app/navigation";
     import { readText } from "@tauri-apps/plugin-clipboard-manager";
     import { onMount } from "svelte";
+    import Toast from "$src/lib/components/Toast.svelte";
+    import { addError } from "$src/lib/stores/error.svelte";
 
     let username = $state("");
     let server_url = $state("");
@@ -29,7 +31,7 @@
             });
             goto("/app");
         } catch (error) {
-            console.log("Failed to connect");
+            addError(`Failed to connect: ${error}`);
         }
     }
 
@@ -38,7 +40,7 @@
             const text = await readText();
             server_pw = text;
         } catch (error) {
-            console.log(`Error when reading clipboard: ${error}`);
+            addError(`Error when reading clipboard: ${error}`);
         }
     }
 
@@ -50,7 +52,7 @@
                 await invoke("set_videos_dir", { path: video_dir });
             }
         } catch (error) {
-            console.log(`Error when selecting video path: ${error}`);
+            addError(`Error when selecting video path: ${error}`);
         }
     }
 
@@ -62,7 +64,7 @@
                 await invoke("set_mpv_binary", { path: mpv_binary });
             }
         } catch (error) {
-            console.log(`Error when selecting video path: ${error}`);
+            addError(`Error when selecting video path: ${error}`);
         }
     }
 </script>
@@ -145,6 +147,8 @@
         </div>
     </div>
 </main>
+
+<Toast />
 
 <style>
     .container {
